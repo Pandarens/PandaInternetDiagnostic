@@ -129,7 +129,7 @@ def _setup_log():
         path = os.path.join(d, "app.log")
         if os.path.exists(path) and os.path.getsize(path) > 2_000_000:
             os.replace(path, path + ".1")
-        f = open(path, "a", encoding="utf-8", buffering=1)
+        f = open(path, "a", encoding="utf-8-sig" if not os.path.exists(path) else "utf-8", buffering=1)
         sys.stdout = sys.stderr = f
         print(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} start, launcher {LAUNCHER_VERSION}, args {sys.argv[1:]}")
     except OSError:

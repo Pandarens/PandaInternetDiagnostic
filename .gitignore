@@ -21,3 +21,4 @@ venv/
 .vscode/
 .idea/
 tools/icon.png
+ui-profile/
