@@ -1,0 +1,42 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tests
+        run: python -m unittest discover tests
+
+      - name: Check tag matches version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path panda_diag/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} != version $v" }
+
+      - name: Build
+        run: |
+          python -m pip install pyinstaller==6.22.3
+          python build.py
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = (Get-Content dist/update.json -Raw | ConvertFrom-Json).notes
+          if (-not $notes) { $notes = "Panda Internet Diagnostic ${{ github.ref_name }}" }
+          gh release create "${{ github.ref_name }}" dist/PandaInternetDiagnostic.exe (Get-ChildItem dist/panda_diag-*.zip).FullName dist/update.json `
+            --title "Panda Internet Diagnostic ${{ github.ref_name }}" --notes "$notes"

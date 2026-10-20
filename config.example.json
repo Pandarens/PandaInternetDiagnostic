@@ -1,0 +1,37 @@
+{
+  "anchors": [
+    "1.1.1.1",
+    "8.8.8.8",
+    "9.9.9.9"
+  ],
+  "gateway": null,
+  "isp_hop": null,
+  "dns_test_name": "www.google.com",
+  "http_check_url": "http://www.msftconnecttest.com/connecttest.txt",
+  "http_check_expect": "Microsoft Connect Test",
+  "ping_interval_sec": 1.0,
+  "ping_timeout_ms": 1000,
+  "slow_checks_interval_sec": 15,
+  "system_checks_interval_sec": 20,
+  "router_checks_interval_sec": 30,
+  "outage_threshold_sec": 3,
+  "tariff_mbps": null,
+  "web_host": "127.0.0.1",
+  "web_port": 8765,
+  "speedtest_url": "https://speed.cloudflare.com/__down?bytes={bytes}",
+  "router": {
+    "type": "auto",
+    "host": null,
+    "username": "admin",
+    "password": "",
+    "https": true,
+    "wan_interface": "ether1",
+    "snmp_community": "public"
+  },
+  "ont": {
+    "type": "auto",
+    "host": null,
+    "username": "",
+    "password": ""
+  }
+}

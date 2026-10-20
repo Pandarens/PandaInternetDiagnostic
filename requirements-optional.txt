@@ -1,0 +1,3 @@
+# Optional: extra router families
+tplinkrouterc6u>=5.0
+huawei-lte-api>=1.9

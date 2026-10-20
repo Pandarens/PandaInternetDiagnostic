@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panda Internet Diagnostic</title>
+<style>
+:root{
+  --bg:#f4f5f7;--panel:#ffffff;--panel2:#f0f2f5;--text:#16181d;--muted:#667085;--line:#e3e6ea;
+  --ok:#12a150;--ok-bg:#e7f6ee;--warn:#d98a00;--warn-bg:#fff4dc;--bad:#d92d20;--bad-bg:#fdecea;--info:#2e6be6;--info-bg:#e8effd;
+  --accent:#2e6be6;--c1:#2e6be6;--c2:#12a150;--c3:#d98a00;--c4:#9b51e0;--c5:#00a3bf;--c6:#e0457b;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1115;--panel:#171a21;--panel2:#1e222b;--text:#e7e9ee;--muted:#8b93a3;--line:#2a2f3a;
+  --ok:#3ccf7e;--ok-bg:#12291d;--warn:#f0b43c;--warn-bg:#2d2412;--bad:#ff6b5e;--bad-bg:#331816;--info:#6b9bff;--info-bg:#17213a;
+  --accent:#6b9bff;--c1:#6b9bff;--c2:#3ccf7e;--c3:#f0b43c;--c4:#b98cff;--c5:#38c9de;--c6:#ff7aa8;}}
+:root[data-theme="dark"]{
+  --bg:#0f1115;--panel:#171a21;--panel2:#1e222b;--text:#e7e9ee;--muted:#8b93a3;--line:#2a2f3a;
+  --ok:#3ccf7e;--ok-bg:#12291d;--warn:#f0b43c;--warn-bg:#2d2412;--bad:#ff6b5e;--bad-bg:#331816;--info:#6b9bff;--info-bg:#17213a;
+  --accent:#6b9bff;--c1:#6b9bff;--c2:#3ccf7e;--c3:#f0b43c;--c4:#b98cff;--c5:#38c9de;--c6:#ff7aa8;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+header .sp{flex:1}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{background:none;border:0;color:var(--muted);padding:7px 12px;border-radius:8px;cursor:pointer;font:inherit}
+nav button.on{background:var(--panel2);color:var(--text);font-weight:600}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+.btn.sec{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+.btn:disabled{opacity:.55;cursor:wait}
+main{max-width:1280px;margin:0 auto;padding:18px 20px 60px}
+.tab{display:none}.tab.on{display:block}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;min-width:0}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 12px;font-weight:600}
+.banner{display:flex;align-items:center;gap:16px;border-radius:12px;padding:16px 20px;margin-bottom:14px;border:1px solid var(--line)}
+.banner .dot{width:14px;height:14px;border-radius:50%;flex:none}
+.banner b{font-size:20px}
+.banner.ok{background:var(--ok-bg)}.banner.ok .dot{background:var(--ok)}
+.banner.bad{background:var(--bad-bg)}.banner.bad .dot{background:var(--bad);animation:pulse 1s infinite}
+.banner.warn{background:var(--warn-bg)}.banner.warn .dot{background:var(--warn)}
+@keyframes pulse{50%{opacity:.3}}
+.chain{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px}
+.node{flex:1;min-width:130px;background:var(--panel2);border-radius:10px;padding:10px 12px;border:2px solid transparent}
+.node .t{font-weight:650}.node .ip{color:var(--muted);font-size:12px}
+.node .m{font-variant-numeric:tabular-nums;margin-top:6px;font-size:13px}
+.node.ok{border-color:var(--ok)}.node.warn{border-color:var(--warn)}.node.bad{border-color:var(--bad);background:var(--bad-bg)}.node.na{opacity:.6}
+.arrow{align-self:center;color:var(--muted);padding:0 6px;font-size:18px}
+.f{border-left:4px solid var(--line);padding:8px 12px;margin:8px 0;background:var(--panel2);border-radius:0 8px 8px 0}
+.f.critical{border-color:var(--bad)}.f.warning{border-color:var(--warn)}.f.info{border-color:var(--info)}.f.ok{border-color:var(--ok)}
+.f .tt{font-weight:600}.f .dd{color:var(--muted);white-space:pre-wrap;font-size:13px;margin-top:2px}.f .aa{margin-top:4px;font-size:13px}
+.f .aa:before{content:"→ ";color:var(--accent);font-weight:700}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+tr.click{cursor:pointer}tr.click:hover{background:var(--panel2)}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.pill.critical{background:var(--bad-bg);color:var(--bad)}.pill.warning{background:var(--warn-bg);color:var(--warn)}
+.pill.info{background:var(--info-bg);color:var(--info)}.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.muted{color:var(--muted)}.num{font-variant-numeric:tabular-nums}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px}.kv div:nth-child(odd){color:var(--muted)}
+.bar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--accent)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.legend span:before{content:"";display:inline-block;width:10px;height:3px;margin-right:6px;vertical-align:middle;background:var(--c)}
+canvas{width:100%;display:block}
+.seg{display:inline-flex;background:var(--panel2);border-radius:8px;padding:2px}
+.seg button{border:0;background:none;color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer;font:inherit;font-size:12px}
+.seg button.on{background:var(--panel);color:var(--text);font-weight:600}
+.row{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}
+.stat{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums}
+dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;max-width:900px;width:92vw;padding:0}
+dialog .in{padding:18px;max-height:80vh;overflow:auto}
+dialog::backdrop{background:#0008}
+.empty{color:var(--muted);padding:14px 0}
+@media (max-width:640px){header{padding:10px 16px}main{padding:14px 16px 40px}.chain{flex-direction:column}.arrow{transform:rotate(90deg);align-self:center}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" style="color:var(--muted);text-decoration:none;font-size:13px">← Простая проверка</a>
+  <h1>🐼 Panda Internet Diagnostic</h1>
+  <nav id="nav">
+    <button data-t="ov" class="on">Обзор</button>
+    <button data-t="ev">События</button>
+    <button data-t="ld">Нагрузка</button>
+    <button data-t="wf">Wi-Fi</button>
+    <button data-t="rt">Роутер</button>
+    <button data-t="pc">Этот ПК</button>
+  </nav>
+  <span class="sp"></span>
+  <button class="btn sec" id="bSpeed">Тест скорости</button>
+  <button class="btn" id="bDiag">Полная диагностика</button>
+</header>
+<main>
+  <div id="banner" class="banner ok"><span class="dot"></span><div><b id="bTitle">Загрузка…</b><div id="bSub" class="muted"></div></div></div>
+
+  <section class="tab on" id="t-ov">
+    <div class="card"><h2>Цепочка подключения (последняя минута)</h2><div class="chain" id="chain"></div></div>
+    <div class="card" style="margin-top:14px">
+      <div class="row"><h2 style="margin:0">Пинг и потери</h2>
+        <div class="seg" id="range"><button data-m="5">5 мин</button><button data-m="15" class="on">15 мин</button><button data-m="60">1 ч</button><button data-m="360">6 ч</button><button data-m="1440">24 ч</button></div></div>
+      <canvas id="chart" height="260"></canvas>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="grid g2" style="margin-top:14px">
+      <div class="card"><h2>Диагноз</h2><div id="findings" class="empty">Выполняется первичная диагностика…</div></div>
+      <div class="card"><h2>Последние события</h2><div id="lastEvents"></div></div>
+    </div>
+  </section>
+
+  <section class="tab" id="t-ev">
+    <div class="card">
+      <div class="row"><h2 style="margin:0">Обрывы, микрообрывы, ухудшения</h2>
+        <div class="seg" id="evRange"><button data-h="24" class="on">24 ч</button><button data-h="168">7 дней</button><button data-h="336">14 дней</button></div></div>
+      <div class="grid g3" id="evStats" style="margin-bottom:12px"></div>
+      <table><thead><tr><th>Время</th><th>Длительность</th><th>Тип</th><th>Что</th><th>Причина</th></tr></thead><tbody id="evBody"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="t-ld">
+    <div class="grid g3" id="ldStats"></div>
+    <div class="card" style="margin-top:14px"><h2>Кто потребляет трафик (по данным роутера)</h2><div id="devices"></div></div>
+    <div class="card" style="margin-top:14px"><h2>Загрузка портов роутера</h2><div id="ports"></div></div>
+  </section>
+
+  <section class="tab" id="t-wf">
+    <div class="grid g2">
+      <div class="card"><h2>Рекомендации</h2><div id="wfAdvice" class="empty">Запустите полную диагностику.</div></div>
+      <div class="card"><h2>Ваши точки доступа</h2><div id="wfRadios"></div></div>
+    </div>
+    <div class="card" style="margin-top:14px"><h2>Загруженность каналов 2.4 ГГц</h2><canvas id="ch24" height="170"></canvas></div>
+    <div class="card" style="margin-top:14px"><h2>Загруженность каналов 5 ГГц</h2><canvas id="ch5" height="170"></canvas></div>
+    <div class="card" style="margin-top:14px"><h2>Соседние сети</h2><div id="wfScan"></div></div>
+  </section>
+
+  <section class="tab" id="t-rt">
+    <div class="grid g2">
+      <div class="card"><h2>Роутер</h2><div id="rtInfo"></div></div>
+      <div class="card"><h2>WAN (подключение к провайдеру)</h2><div id="rtWan"></div></div>
+    </div>
+    <div class="card" style="margin-top:14px"><h2>Порты</h2><div id="rtPorts"></div></div>
+    <div class="card" style="margin-top:14px"><h2>Оптика / линия</h2><div id="rtOptics"></div></div>
+    <div class="card" style="margin-top:14px"><h2>Заметки по доступу к роутеру</h2><div id="rtNotes"></div></div>
+  </section>
+
+  <section class="tab" id="t-pc">
+    <div class="grid g2">
+      <div class="card"><h2>Сетевой адаптер</h2><div id="pcInfo"></div></div>
+      <div class="card"><h2>DNS и HTTP</h2><div id="pcDns"></div></div>
+    </div>
+    <div class="card" style="margin-top:14px"><h2>Маршрут до интернета</h2><div id="pcPath"></div></div>
+  </section>
+</main>
+<dialog id="dlg"><div class="in" id="dlgIn"></div></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const bps = v => v == null ? "—" : v >= 1e9 ? (v/1e9).toFixed(2)+" Гбит/с" : v >= 1e6 ? (v/1e6).toFixed(1)+" Мбит/с" : v >= 1e3 ? (v/1e3).toFixed(0)+" Кбит/с" : Math.round(v)+" бит/с";
+const bytes = v => v == null ? "—" : v >= 1e12 ? (v/1e12).toFixed(2)+" ТБ" : v >= 1e9 ? (v/1e9).toFixed(2)+" ГБ" : v >= 1e6 ? (v/1e6).toFixed(1)+" МБ" : (v/1e3).toFixed(0)+" КБ";
+const dur = s => { if (s == null) return "—"; s = Math.round(s); if (s < 60) return s+" с"; if (s < 3600) return Math.floor(s/60)+" мин "+(s%60)+" с"; if (s < 86400) return Math.floor(s/3600)+" ч "+Math.floor(s%3600/60)+" мин"; return Math.floor(s/86400)+" д "+Math.floor(s%86400/3600)+" ч"; };
+const tm = t => new Date(t*1000).toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit"});
+const LVL = {critical:"Критично", warning:"Внимание", info:"Инфо", ok:"Норма"};
+const KIND = {outage:["critical","Обрыв"], blip:["warning","Микрообрыв"], degradation:["warning","Ухудшение"], change:["info","Изменение"], router:["warning","Роутер"]};
+let S = null, minutes = 15, evHours = 24;
+
+document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#nav button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.id === "t-" + b.dataset.t));
+  render(); if (b.dataset.t === "ev") loadEvents(); if (b.dataset.t === "ov") loadChart();
+});
+document.querySelectorAll("#range button").forEach(b => b.onclick = () => {
+  minutes = +b.dataset.m; document.querySelectorAll("#range button").forEach(x => x.classList.toggle("on", x === b)); loadChart(); });
+document.querySelectorAll("#evRange button").forEach(b => b.onclick = () => {
+  evHours = +b.dataset.h; document.querySelectorAll("#evRange button").forEach(x => x.classList.toggle("on", x === b)); loadEvents(); });
+
+async function diag(speed) {
+  const b1 = $("#bDiag"), b2 = $("#bSpeed"); b1.disabled = b2.disabled = true;
+  const old = b1.textContent; (speed ? b2 : b1).textContent = speed ? "Измеряю скорость…" : "Диагностика…";
+  try { await fetch("/api/diagnose" + (speed ? "?speed=1" : ""), {method:"POST"}); } catch (e) {}
+  b1.disabled = b2.disabled = false; b1.textContent = old; b2.textContent = "Тест скорости"; await tick();
+}
+$("#bDiag").onclick = () => diag(false);
+$("#bSpeed").onclick = () => diag(true);
+
+function finding(f) {
+  return `<div class="f ${f.level}"><div class="tt"><span class="pill ${f.level}">${LVL[f.level]}</span> ${esc(f.title)}</div>
+    ${f.detail ? `<div class="dd">${esc(f.detail)}</div>` : ""}${f.advice ? `<div class="aa">${esc(f.advice)}</div>` : ""}</div>`;
+}
+
+function nodeState(t) {
+  if (!t || !t.m1 || !t.m1.sent) return "na";
+  if (t.m1.loss >= 100 || t.last === null && t.m1.loss > 50) return "bad";
+  if (t.m1.loss >= 2 || (t.key === "gateway" && t.m1.avg > 10) || (t.m1.jitter || 0) > 30) return "warn";
+  return "ok";
+}
+
+function render() {
+  if (!S) return;
+  // banner
+  const ban = $("#banner"), v = S.diag && S.diag.verdict;
+  if (!S.internet) {
+    ban.className = "banner bad"; $("#bTitle").textContent = `Интернета нет уже ${dur(S.down_for)}`;
+    $("#bSub").textContent = "Идёт автоматическая диагностика причины — результат появится во вкладке «События».";
+  } else if (v && (v.level === "critical" || v.level === "warning")) {
+    ban.className = "banner warn"; $("#bTitle").textContent = v.title; $("#bSub").textContent = v.advice || v.detail || "";
+  } else {
+    ban.className = "banner ok"; $("#bTitle").textContent = "Интернет работает";
+    $("#bSub").textContent = `Мониторинг ${dur(S.uptime)} · обрывов: ${S.counts.outages} · микрообрывов: ${S.counts.blips} · простой: ${dur(S.counts.downtime)}`;
+  }
+  // chain
+  const by = {}; S.targets.forEach(t => by[t.key] = t);
+  const anchors = S.targets.filter(t => t.key.startsWith("anchor:"));
+  const best = anchors.slice().sort((a,b) => (a.m1.loss - b.m1.loss) || ((a.m1.avg ?? 1e9) - (b.m1.avg ?? 1e9)))[0];
+  const pc = S.pc || {};
+  const nodes = [{t:"Этот ПК", ip:(pc.ipv4||"—"), st: pc.status === "Up" ? "ok" : "bad",
+                  m: pc.is_wifi && S.wifi ? `Wi-Fi ${S.wifi.rssi_dbm ?? "?"} дБм, к.${S.wifi.channel ?? "?"}` : `Кабель ${bps(pc.link_bps)}`}];
+  for (const [k, name] of [["gateway","Роутер"],["modem","Модем провайдера"],["ont","ONT"],["isp_hop","Провайдер"]]) {
+    const t = by[k]; if (!t) continue;
+    nodes.push({t:name, ip:t.ip, st:nodeState(t), m: t.m1.avg != null ? `${t.m1.avg} мс · потери ${t.m1.loss}%` : `потери ${t.m1.loss}%`});
+  }
+  if (best) {
+    const ok = anchors.filter(a => nodeState(a) !== "bad").length;
+    nodes.push({t:"Интернет", ip:`${ok}/${anchors.length} серверов`, st: S.internet ? nodeState(best) : "bad",
+                m: best.m1.avg != null ? `${best.m1.avg} мс · потери ${best.m1.loss}%` : "нет ответа"});
+  }
+  $("#chain").innerHTML = nodes.map(n => `<div class="node ${n.st}"><div class="t">${esc(n.t)}</div><div class="ip">${esc(n.ip)}</div><div class="m">${esc(n.m)}</div></div>`).join('<div class="arrow">→</div>');
+  // findings
+  const fs = S.diag && S.diag.findings;
+  $("#findings").className = fs ? "" : "empty";
+  $("#findings").innerHTML = S.diag.running && !fs ? "Диагностика выполняется…" : fs ?
+    `<div class="muted" style="font-size:12px">Проверка от ${tm(S.diag.time)}${S.diag.running ? " · выполняется новая…" : ""}</div>` + fs.map(finding).join("") : "Нет данных";
+  renderLoad(); renderWifi(); renderRouter(); renderPc();
+}
+
+function renderLoad() {
+  const L = S.load || {}, w = L.wan || {}, pcl = L.pc || {};
+  $("#ldStats").innerHTML = [
+    ["Входящий канал", bps(w.down_bps), w.link_mbps ? `порт WAN ${w.link_mbps} Мбит/с` : ""],
+    ["Исходящий канал", bps(w.up_bps), ""],
+    ["Этот ПК ↓/↑", `${bps(pcl.down_bps)}`, `↑ ${bps(pcl.up_bps)}`],
+  ].map(([a,b,c]) => `<div class="card"><h2>${a}</h2><div class="stat">${b}</div><div class="muted">${c}</div></div>`).join("");
+  const devs = (L.devices || []);
+  if (!devs.length) { $("#devices").innerHTML = `<div class="empty">Роутер не отдаёт список устройств. Настройте доступ к роутеру (логин/пароль в config.json) — см. вкладку «Роутер».</div>`; }
+  else {
+    const mx = Math.max(1, ...devs.map(d => (d.down_bps||0) + (d.up_bps||0)));
+    devs.sort((a, b) => ((b.down_bps||0) + (b.up_bps||0)) - ((a.down_bps||0) + (a.up_bps||0)) || ((b.down_bytes||0) - (a.down_bytes||0)));
+    const hasRate = devs.some(d => d.down_bps != null);
+    const hasTraffic = devs.some(d => d.down_bps != null || d.down_bytes != null);
+    $("#devices").innerHTML = `<table><thead><tr><th>Устройство</th><th>IP / MAC</th><th>Подключение</th><th>↓ сейчас</th><th>↑ сейчас</th><th></th><th>Всего ↓/↑</th></tr></thead><tbody>` +
+      devs.slice(0, 150).map(d => `<tr><td>${esc(d.name || "—")}</td><td class="muted">${esc(d.ip || "")}<br>${esc(d.mac || "")}</td>
+        <td>${esc(d.conn || "—")}${d.signal_dbm != null ? `<br><span class="muted">${d.signal_dbm} дБм</span>` : ""}</td>
+        <td class="num">${bps(d.down_bps)}</td><td class="num">${bps(d.up_bps)}</td>
+        <td style="width:18%"><div class="bar"><i style="width:${(((d.down_bps||0)+(d.up_bps||0))/mx*100).toFixed(1)}%"></i></div></td>
+        <td class="num muted">${bytes(d.down_bytes)} / ${bytes(d.up_bytes)}</td></tr>`).join("") + `</tbody></table>` +
+      (hasTraffic ? (hasRate ? "" : `<div class="muted" style="margin-top:8px">Скорости появятся после второго опроса роутера (~30 с).</div>`)
+        : `<div class="f info" style="margin-top:10px"><div class="tt">Роутер отдал только список устройств (${devs.length}) без трафика.</div><div class="aa">Чтобы видеть, кто сколько качает, укажите логин/пароль роутера в config.json — см. вкладку «Роутер».</div></div>`);
+  }
+  const ports = L.ports || [];
+  $("#ports").innerHTML = ports.length ? `<table><thead><tr><th>Порт</th><th>Описание</th><th>Скорость порта</th><th>↓ приём</th><th>↑ передача</th><th>Загрузка</th></tr></thead><tbody>` +
+    ports.map(p => { const cap = (p.speed_mbps || 0) * 1e6; const u = cap ? Math.max(p.rx_bps, p.tx_bps) / cap * 100 : 0;
+      return `<tr><td>${esc(p.name)}${p.wan ? ' <span class="pill info">WAN</span>' : ""}</td><td class="muted">${esc(p.alias || "")}</td><td>${p.speed_mbps ? p.speed_mbps + " Мбит/с" : "—"}</td>
+      <td class="num">${bps(p.rx_bps)}</td><td class="num">${bps(p.tx_bps)}</td><td style="width:18%"><div class="bar"><i style="width:${Math.min(100,u).toFixed(1)}%"></i></div><span class="muted">${u.toFixed(1)}%</span></td></tr>`; }).join("") + "</tbody></table>"
+    : `<div class="empty">Нет данных по портам (нужен доступ к роутеру или SNMP).</div>`;
+}
+
+function renderWifi() {
+  const wa = S.diag && S.diag.wifi_analysis;
+  $("#wfAdvice").className = wa ? "" : "empty";
+  $("#wfAdvice").innerHTML = wa ? wa.advice.map(a => `<div class="f info"><div class="tt">${esc(a)}</div></div>`).join("") +
+    `<div class="muted" style="margin-top:6px">Соседних сетей в эфире: ${wa.neighbours}</div>` :
+    "Нет данных Wi-Fi. Анализ эфира выполняется Wi-Fi-адаптером этого ПК или роутером (OpenWrt, Keenetic, Xiaomi) — запустите полную диагностику.";
+  const radios = (S.router && S.router.wifi_radios) || [];
+  const cl = S.wifi;
+  $("#wfRadios").innerHTML = (radios.length ? `<table><thead><tr><th>Диапазон</th><th>SSID</th><th>Канал</th><th>Ширина</th><th>Мощность</th></tr></thead><tbody>` +
+    radios.map(r => `<tr><td>${r.band ?? "?"} ГГц</td><td>${esc(r.ssid || "—")}</td><td>${r.channel ?? "авто"}</td><td>${r.width ? r.width + " МГц" : "—"}</td><td>${esc(r.txpower ?? "—")}</td></tr>`).join("") + "</tbody></table>"
+    : `<div class="empty">Роутер не сообщает параметры Wi-Fi.</div>`) +
+    (cl ? `<div class="kv" style="margin-top:10px"><div>ПК подключён к</div><div>${esc(cl.ssid)} (${esc(cl.bssid)})</div><div>Сигнал</div><div>${cl.rssi_dbm} дБм (${cl.signal_pct}%)</div><div>Канал</div><div>${cl.channel} · ${esc(cl.radio || "")}</div><div>Скорость</div><div>${cl.rx_mbps}/${cl.tx_mbps} Мбит/с</div></div>` : "");
+  drawChannels($("#ch24"), wa && wa.bands["2.4"], [1,2,3,4,5,6,7,8,9,10,11,12,13]);
+  drawChannels($("#ch5"), wa && wa.bands["5"], [36,40,44,48,52,56,60,64,100,104,108,112,116,120,124,128,132,136,140,144,149,153,157,161,165]);
+  const scan = (S.diag && S.diag.wifi_scan) || [];
+  $("#wfScan").innerHTML = scan.length ? `<table><thead><tr><th>Сеть</th><th>BSSID</th><th>Канал</th><th>Сигнал</th></tr></thead><tbody>` +
+    scan.slice().sort((a,b) => (b.signal_dbm ?? -200) - (a.signal_dbm ?? -200)).map(a => `<tr><td>${esc(a.ssid || "(скрытая)")}</td><td class="muted">${esc(a.bssid || "")}</td><td>${a.channel ?? "?"}</td><td>${a.signal_dbm ?? "?"} дБм</td></tr>`).join("") + "</tbody></table>"
+    : `<div class="empty">Сканирование эфира недоступно (у ПК нет Wi-Fi-адаптера, а роутер не отдаёт результаты сканирования).</div>`;
+}
+
+function drawChannels(cv, band, chans) {
+  const ctx = setup(cv); const W = cv.clientWidth, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!band) { ctx.fillStyle = css("--muted"); ctx.fillText("Нет данных", 10, 20); return; }
+  const counts = band.per_channel || {}; const mx = Math.max(1, ...chans.map(c => counts[c] || 0));
+  const bw = (W - 20) / chans.length, base = H - 22;
+  chans.forEach((c, i) => {
+    const n = counts[c] || 0, h = (base - 18) * n / mx, x = 10 + i * bw;
+    ctx.fillStyle = c === band.current ? css("--warn") : c === band.best ? css("--ok") : css("--c1");
+    ctx.globalAlpha = n ? 0.85 : 0.15; ctx.fillRect(x + 2, base - Math.max(h, 2), bw - 4, Math.max(h, 2)); ctx.globalAlpha = 1;
+    ctx.fillStyle = css("--muted"); ctx.font = "11px system-ui"; ctx.textAlign = "center";
+    ctx.fillText(c, x + bw / 2, H - 6); if (n) { ctx.fillStyle = css("--text"); ctx.fillText(n, x + bw / 2, base - h - 4); }
+  });
+  ctx.textAlign = "left"; ctx.font = "12px system-ui";
+  ctx.fillStyle = css("--ok"); ctx.fillText(`■ рекомендуемый: ${band.best}`, 10, 12);
+  if (band.current) { ctx.fillStyle = css("--warn"); ctx.fillText(`■ текущий: ${band.current}`, 170, 12); }
+}
+
+function kv(rows) { return `<div class="kv">${rows.filter(r => r[1] !== undefined && r[1] !== null && r[1] !== "").map(([k,v]) => `<div>${esc(k)}</div><div>${v}</div>`).join("")}</div>`; }
+const yes = (b, t="да", f="нет") => b == null ? "—" : b ? `<span class="pill ok">${t}</span>` : `<span class="pill critical">${f}</span>`;
+
+function renderRouter() {
+  const r = S.router;
+  if (!r) { $("#rtInfo").innerHTML = '<div class="empty">Роутер ещё не опрошен.</div>'; return; }
+  $("#rtInfo").innerHTML = kv([["Тип драйвера", esc(r.type) + (r.fallback ? ` (+${esc(r.fallback)})` : "")], ["Модель", esc(r.model)], ["Прошивка", esc(r.firmware)],
+    ["Аптайм", dur(r.uptime_sec)], ["CPU", r.cpu_load != null ? r.cpu_load + " %" : null], ["Память", r.mem_pct != null ? r.mem_pct + " %" : null],
+    ["Температура", r.temperature != null ? r.temperature + " °C" : null]]);
+  const w = r.wan || {};
+  $("#rtWan").innerHTML = Object.keys(w).length ? kv([["Линк на WAN-порту", yes(w.link, "есть", "НЕТ")], ["Подключение", yes(w.connected, "подключено", "НЕ подключено")],
+    ["Скорость порта", w.link_speed_mbps ? w.link_speed_mbps + " Мбит/с" : null], ["Протокол", esc(w.proto)], ["Статус", esc(w.status_text || w.pppoe_status || w.dhcp_status || w.phy_status)],
+    ["Внешний IP", esc(w.ip)], ["Аптайм WAN", w.uptime_sec != null ? dur(w.uptime_sec) : null],
+    ["Ошибка", w.error_text ? `<span class="pill critical">${esc(w.error_text)}</span> ${esc(w.error_code || "")}` : null],
+    ["Ошибки rx/tx", w.rx_errors != null ? `${w.rx_errors} / ${w.tx_errors}` : null], ["CRC/FCS", w.fcs_errors],
+    ["Падений линка", w.link_downs], ["Последнее падение", esc(w.last_link_down)], ["Интерфейс", esc(w.iface)]]) : '<div class="empty">Нет данных о WAN.</div>';
+  const ports = r.ports || [];
+  $("#rtPorts").innerHTML = ports.length ? `<table><thead><tr><th>Порт</th><th>Линк</th><th>Скорость</th><th>Ошибки rx/tx</th><th>CRC</th></tr></thead><tbody>` +
+    ports.map(p => `<tr><td>${esc(p.name)}${p.wan ? ' <span class="pill info">WAN</span>' : ""}${p.alias ? `<br><span class="muted">${esc(p.alias)}</span>` : ""}</td><td>${yes(p.link, "up", "down")}</td>
+      <td>${p.speed_mbps ? (p.speed_mbps <= 100 && p.link ? `<span class="pill warning">${p.speed_mbps} Мбит/с</span>` : p.speed_mbps + " Мбит/с") : "—"}</td>
+      <td class="num">${p.rx_errors ?? "—"} / ${p.tx_errors ?? "—"}</td><td class="num">${p.fcs_errors ?? "—"}</td></tr>`).join("") + "</tbody></table>"
+    : '<div class="empty">Нет данных о портах.</div>';
+  const o = Object.assign({}, r.optics || {}), ont = S.ont && S.ont.optics;
+  let html = "";
+  const optic = (title, o) => `<h3 style="margin:6px 0">${esc(title)}</h3>` + kv([["Приём (RX)", o.rx_dbm != null ? `<b>${o.rx_dbm} дБм</b> <span class="muted">(норма −8…−27)</span>` : null],
+    ["Передача (TX)", o.tx_dbm != null ? o.tx_dbm + " дБм" : null], ["Температура", o.temp_c != null ? o.temp_c + " °C" : null],
+    ["LOS", o.rx_loss != null ? yes(!o.rx_loss, "нет", "ЕСТЬ") : null], ["Состояние PON", esc(o.pon_state)], ["Модуль", esc(o.module)]]);
+  if (Object.keys(o).length) html += optic("SFP роутера", o);
+  (r.sfp || []).filter(s => s.module !== o.module).forEach(s => html += optic("SFP " + s.module, s));
+  if (ont && Object.keys(ont).length) html += optic("ONT провайдера", ont);
+  if (r.dsl) html += `<h3 style="margin:6px 0">DSL</h3>` + kv([["Статус", esc(r.dsl.status_text)], ["Скорость", `${r.dsl.down_kbps} / ${r.dsl.up_kbps} кбит/с`],
+    ["SNR", `${r.dsl.snr_down_db} / ${r.dsl.snr_up_db} дБ`], ["Затухание", `${r.dsl.atten_down_db} / ${r.dsl.atten_up_db} дБ`], ["CRC / FEC", `${r.dsl.crc_errors} / ${r.dsl.fec_errors}`]]);
+  if (r.cellular) html += `<h3 style="margin:6px 0">4G/LTE</h3>` + kv(Object.entries(r.cellular).map(([k,v]) => [k.toUpperCase(), esc(v)]));
+  $("#rtOptics").innerHTML = html || '<div class="empty">Нет данных об оптике/линии. Для GPON укажите адрес ONT в config.json (раздел "ont").</div>';
+  $("#rtNotes").innerHTML = (r.notes || []).length ? r.notes.map(n => `<div class="f info"><div class="tt">${esc(n)}</div></div>`).join("") : '<div class="muted">Доступ к роутеру работает.</div>';
+}
+
+function renderPc() {
+  const p = S.pc || {};
+  $("#pcInfo").innerHTML = kv([["Адаптер", esc(p.name)], ["Устройство", esc(p.description)], ["Состояние", esc(p.status)],
+    ["Скорость линка", bps(p.link_bps)], ["Дуплекс", p.full_duplex == null ? "—" : p.full_duplex ? "полный" : '<span class="pill warning">полу</span>'],
+    ["Настройка скорости", esc(p.speed_duplex_setting)], ["Энергосбережение", esc((p.power_saving || []).join("; "))],
+    ["IPv4", esc(p.ipv4)], ["Шлюз", esc(S.gateway)], ["DNS", esc((p.dns || []).join(", "))],
+    ["Ошибки rx/tx", `${p.rx_errors ?? "—"} / ${p.tx_errors ?? "—"}`], ["Отброшено rx/tx", `${p.rx_discards ?? "—"} / ${p.tx_discards ?? "—"}`],
+    ["Драйвер", esc(`${p.driver_version || ""}`)], ["MAC", esc(p.mac)]]);
+  const d = S.dns || {}, h = S.http || {};
+  const dnsRow = x => `<tr><td>${esc(x.server)}</td><td>${x.ok ? '<span class="pill ok">OK</span>' : '<span class="pill critical">' + esc(x.rcode) + "</span>"}</td><td class="num">${x.ms ?? "—"} мс</td></tr>`;
+  $("#pcDns").innerHTML = `<table><thead><tr><th>DNS-сервер</th><th>Ответ</th><th>Время</th></tr></thead><tbody>` +
+    (d.system || []).map(dnsRow).join("") + `<tr><td colspan="3" class="muted">Публичные для сравнения</td></tr>` + (d.public || []).map(dnsRow).join("") + "</tbody></table>" +
+    `<div style="margin-top:10px">${kv([["HTTP-проверка", h.ok ? `<span class="pill ok">OK</span> ${h.ms} мс` : `<span class="pill critical">ошибка</span> ${esc(h.error || h.note || "")}`]])}</div>`;
+  const path = S.diag && S.diag.path;
+  $("#pcPath").innerHTML = path && path.hops ? `<table><thead><tr><th>#</th><th>Узел</th><th>Задержка</th><th>Роль</th></tr></thead><tbody>` +
+    path.hops.map(h => `<tr><td>${h.ttl}</td><td>${esc(h.addr || "* (не отвечает)")}</td><td class="num">${h.rtt ?? "—"} мс</td>
+      <td class="muted">${h.addr === S.gateway ? "ваш роутер" : h.addr === path.modem_hop ? "модем провайдера (двойной NAT)" : h.addr === path.isp_hop ? "первый узел провайдера" : h.reached ? "цель" : ""}</td></tr>`).join("") + "</tbody></table>"
+    : '<div class="empty">Маршрут появится после полной диагностики.</div>';
+}
+
+function setup(cv) {
+  const r = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.getAttribute("height");
+  cv.width = w * r; cv.height = h * r; cv.style.height = h + "px";
+  const ctx = cv.getContext("2d"); ctx.setTransform(r, 0, 0, r, 0, 0); return ctx;
+}
+
+const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6"];
+async function loadChart() {
+  let data; try { data = await (await fetch(`/api/samples?minutes=${minutes}`)).json(); } catch (e) { return; }
+  const cv = $("#chart"); const ctx = setup(cv); const W = cv.clientWidth, H = +cv.getAttribute("height");
+  const pad = {l:44, r:10, t:10, b:22}; ctx.clearRect(0, 0, W, H);
+  const now = Date.now()/1000, t0 = data.since, keys = Object.keys(data.targets);
+  const pts = {}; let ymax = 10;
+  for (const k of keys) { const s = (data.series[k] || []).map(p => [p[0], p[1], data.step > 1 ? p[2] : (p[1] == null ? 100 : 0)]); pts[k] = s;
+    s.forEach(p => { if (p[1] != null) ymax = Math.max(ymax, p[1]); }); }
+  ymax = Math.min(ymax * 1.15, 1000);
+  const x = t => pad.l + (t - t0) / (now - t0) * (W - pad.l - pad.r), y = v => H - pad.b - v / ymax * (H - pad.t - pad.b);
+  ctx.strokeStyle = css("--line"); ctx.fillStyle = css("--muted"); ctx.font = "11px system-ui"; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const v = ymax * i / 4, yy = y(v); ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(W - pad.r, yy); ctx.stroke(); ctx.fillText(Math.round(v) + " мс", 2, yy + 4); }
+  for (let i = 0; i <= 5; i++) { const t = t0 + (now - t0) * i / 5; ctx.fillText(new Date(t*1000).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"}), x(t) - 14, H - 6); }
+  // outage bands: all anchors lost
+  const anc = keys.filter(k => k.startsWith("anchor:"));
+  if (anc.length) { const lossBy = {}; anc.forEach(k => pts[k].forEach(p => { const b = Math.round(p[0]); (lossBy[b] = lossBy[b] || []).push(p[2]); }));
+    ctx.fillStyle = css("--bad"); ctx.globalAlpha = .18;
+    const bw = Math.max(1, (W - pad.l - pad.r) / ((now - t0) / data.step));
+    Object.entries(lossBy).forEach(([t, ls]) => { const m = Math.min(...ls); if (m >= 50) ctx.fillRect(x(+t), pad.t, bw, H - pad.t - pad.b); });
+    ctx.globalAlpha = 1; }
+  const legend = [];
+  keys.forEach((k, i) => {
+    const col = css(COLORS[i % COLORS.length]); const label = k === "gateway" ? "Роутер" : k === "isp_hop" ? "Провайдер" : k === "modem" ? "Модем" : k === "ont" ? "ONT" : k.replace("anchor:", "");
+    legend.push(`<span style="--c:${col}">${esc(label)} (${esc(data.targets[k])})</span>`);
+    ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); let pen = false;
+    pts[k].forEach(p => { if (p[1] == null) { pen = false; return; } const xx = x(p[0]), yy = y(Math.min(p[1], ymax)); pen ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); pen = true; });
+    ctx.stroke();
+    ctx.fillStyle = col; pts[k].forEach(p => { if (p[2] > 0 && p[2] < 50) ctx.fillRect(x(p[0]) - 1, H - pad.b - 4, 2, 4); });
+  });
+  $("#legend").innerHTML = legend.join("") + `<span style="--c:${css("--bad")}">полный обрыв</span>`;
+}
+
+async function loadEvents() {
+  let ev; try { ev = await (await fetch(`/api/events?hours=${evHours}`)).json(); } catch (e) { return; }
+  const out = ev.filter(e => e.kind === "outage"), bl = ev.filter(e => e.kind === "blip");
+  const down = out.reduce((s, e) => s + ((e.end || Date.now()/1000) - e.start), 0);
+  const areas = {}; out.concat(bl).forEach(e => { const c = e.cause || "—"; areas[c] = (areas[c] || 0) + 1; });
+  const top = Object.entries(areas).sort((a,b) => b[1] - a[1])[0];
+  $("#evStats").innerHTML = [["Обрывов", out.length], ["Микрообрывов", bl.length], ["Общий простой", dur(down)], ["Частая причина", top ? `${top[0]} (${top[1]})` : "—"]]
+    .map(([a,b]) => `<div class="card" style="padding:12px"><h2 style="margin-bottom:4px">${a}</h2><div class="${typeof b === "number" ? "stat" : ""}">${esc(b)}</div></div>`).join("");
+  $("#evBody").innerHTML = ev.length ? ev.map(e => { const [lvl, name] = KIND[e.kind] || ["info", e.kind];
+    return `<tr class="click" data-id="${e.id}"><td class="num">${tm(e.start)}</td><td class="num">${e.end ? dur(e.end - e.start) : (e.kind === "outage" ? "идёт…" : "—")}</td>
+      <td><span class="pill ${e.severity || lvl}">${name}</span></td><td>${esc(e.title)}</td><td>${esc(e.cause)}</td></tr>`; }).join("")
+    : `<tr><td colspan="5" class="empty">Событий нет — связь стабильна.</td></tr>`;
+  document.querySelectorAll("#evBody tr.click").forEach(tr => tr.onclick = () => showEvent(+tr.dataset.id));
+  $("#lastEvents").innerHTML = ev.length ? `<table><tbody>` + ev.slice(0, 8).map(e => { const [lvl, name] = KIND[e.kind] || ["info", e.kind];
+    return `<tr class="click" data-id="${e.id}"><td class="num muted">${tm(e.start)}</td><td><span class="pill ${e.severity || lvl}">${name}</span> ${esc(e.title)}<div class="muted">${esc(e.cause)}</div></td></tr>`; }).join("") + "</tbody></table>"
+    : `<div class="empty">Пока ни одного обрыва.</div>`;
+  document.querySelectorAll("#lastEvents tr.click").forEach(tr => tr.onclick = () => showEvent(+tr.dataset.id));
+}
+
+async function showEvent(id) {
+  const d = await (await fetch(`/api/event/${id}`)).json(); const e = d.event; if (!e) return;
+  const det = e.detail || {};
+  const chain = det.chain ? Object.entries(det.chain).map(([k, ok]) => `<span class="pill ${ok ? "ok" : "critical"}">${esc(k.replace("anchor:", ""))}: ${ok ? "ответ" : "нет"}</span>`).join(" ") : "";
+  $("#dlgIn").innerHTML = `<div class="row"><h2 style="margin:0">${esc(e.title)}</h2><button class="btn sec" onclick="dlg.close()">Закрыть</button></div>
+    ${kv([["Начало", tm(e.start)], ["Конец", e.end ? tm(e.end) : "—"], ["Длительность", e.end ? dur(e.end - e.start) : "—"], ["Причина", `<b>${esc(e.cause)}</b>`],
+          ["Быстрая оценка", esc(det.fast_cause)], ["Что отвечало в момент сбоя", chain]])}
+    ${det.findings ? `<h3>Диагностика в момент сбоя</h3>` + det.findings.map(finding).join("") : ""}
+    ${det.gateway ? `<h3>Статистика</h3><pre class="muted">${esc(JSON.stringify(det, null, 1))}</pre>` : ""}`;
+  $("#dlg").showModal();
+}
+
+async function tick() {
+  try { S = await (await fetch("/api/state")).json(); render(); } catch (e) {
+    $("#banner").className = "banner bad"; $("#bTitle").textContent = "Нет связи с программой мониторинга"; $("#bSub").textContent = "Запустите start.bat"; }
+}
+setInterval(tick, 2000); setInterval(() => { if ($("#t-ov").classList.contains("on")) loadChart(); }, 5000);
+setInterval(loadEvents, 15000);
+tick(); loadChart(); loadEvents();
+window.addEventListener("resize", () => { loadChart(); renderWifi(); });
+</script>
+</body>
+</html>

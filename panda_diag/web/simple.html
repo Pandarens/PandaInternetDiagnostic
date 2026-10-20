@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проверка интернета</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+:root{
+  --bg:#f3f5f9;--card:#ffffff;--soft:#eef1f6;--text:#14161b;--muted:#5f6878;--line:#e2e6ee;
+  --brand:#3b6cf6;--brand2:#7b5cf6;--brand-ink:#ffffff;
+  --ok:#14a35a;--ok-soft:#e5f6ec;--warn:#d98a00;--warn-soft:#fff3d9;--bad:#e03b2f;--bad-soft:#fdeceb;--idle:#b6bdca;
+  --shadow:0 1px 2px #0000000d,0 8px 28px #1b2a4a14;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1015;--card:#171a21;--soft:#1f232c;--text:#eceef3;--muted:#98a0b0;--line:#2a2f3a;
+  --brand:#6b8eff;--brand2:#9b80ff;--ok:#38cf7f;--ok-soft:#11291c;--warn:#f2b640;--warn-soft:#2c2412;
+  --bad:#ff6a5e;--bad-soft:#331816;--idle:#4a5160;--shadow:0 1px 2px #0006,0 8px 28px #0007;}}
+:root[data-theme="dark"]{
+  --bg:#0e1015;--card:#171a21;--soft:#1f232c;--text:#eceef3;--muted:#98a0b0;--line:#2a2f3a;
+  --brand:#6b8eff;--brand2:#9b80ff;--ok:#38cf7f;--ok-soft:#11291c;--warn:#f2b640;--warn-soft:#2c2412;
+  --bad:#ff6a5e;--bad-soft:#331816;--idle:#4a5160;--shadow:0 1px 2px #0006,0 8px 28px #0007;}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+a{color:var(--brand);text-decoration:none}
+.top{display:flex;align-items:center;gap:10px;max-width:880px;margin:0 auto;padding:18px 16px}
+.top .logo{font-weight:700;font-size:18px;display:flex;align-items:center;gap:8px}
+.top .sp{flex:1}
+.top a{font-size:14px;color:var(--muted);padding:6px 10px;border-radius:8px}
+.top a:hover{background:var(--soft);color:var(--text)}
+main{max-width:880px;margin:0 auto;padding:0 16px 60px}
+.card{background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:24px;margin-bottom:16px}
+.live{display:flex;align-items:center;gap:10px;font-size:15px;padding:12px 18px;border-radius:14px;margin-bottom:16px;background:var(--card);box-shadow:var(--shadow)}
+.live .d{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none}
+.live.down{background:var(--bad-soft)}.live.down .d{background:var(--bad);animation:blink 1s infinite}
+.live{flex-wrap:wrap}.live .muted{margin-left:auto;font-size:14px}
+@media (max-width:640px){.live .muted{margin-left:20px;width:100%}}
+@keyframes blink{50%{opacity:.25}}
+.muted{color:var(--muted)}
+
+/* ---------- hero ---------- */
+.hero{text-align:center;padding:40px 24px 34px}
+.hero h1{font-size:28px;margin:0 0 6px;letter-spacing:-.3px}
+.hero p{margin:0;color:var(--muted)}
+.go{margin:30px auto 22px;width:200px;height:200px;border-radius:50%;border:0;cursor:pointer;color:var(--brand-ink);
+  background:radial-gradient(circle at 30% 25%,#ffffff40,transparent 55%),linear-gradient(135deg,var(--brand),var(--brand2));
+  box-shadow:0 12px 40px color-mix(in srgb,var(--brand) 45%,transparent),inset 0 -6px 18px #0002;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:20px;font-weight:700;
+  transition:transform .15s ease,box-shadow .15s ease;position:relative}
+.go:hover{transform:translateY(-2px) scale(1.02)}
+.go:active{transform:scale(.97)}
+.go:focus-visible{outline:4px solid color-mix(in srgb,var(--brand) 40%,transparent);outline-offset:6px}
+.go svg{width:54px;height:54px}
+.go:after{content:"";position:absolute;inset:-10px;border-radius:50%;border:2px solid color-mix(in srgb,var(--brand) 30%,transparent);animation:ring 2.4s ease-out infinite}
+@keyframes ring{0%{transform:scale(.92);opacity:1}100%{transform:scale(1.12);opacity:0}}
+.opt{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;color:var(--muted);font-size:15px}
+.sw{width:42px;height:24px;border-radius:99px;background:var(--idle);position:relative;transition:.2s;flex:none}
+.sw:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+input:checked+.sw{background:var(--brand)}input:checked+.sw:after{left:21px}
+.opt input{position:absolute;opacity:0}
+
+/* ---------- chain ---------- */
+.chain{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:8px 0 4px;position:relative}
+.node{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;position:relative;padding:0 2px}
+.node .ic{width:64px;height:64px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:var(--soft);
+  color:var(--idle);transition:all .35s ease;position:relative;z-index:1;border:2px solid transparent}
+.node .ic svg{width:32px;height:32px}
+.node .nm{font-size:13px;font-weight:600;line-height:1.2}
+.node .st{font-size:12px;color:var(--muted);line-height:1.25;min-height:30px}
+.node:not(:last-child):after{content:"";position:absolute;top:32px;left:calc(50% + 34px);right:calc(-50% + 34px);height:3px;border-radius:2px;
+  background:var(--line);transition:background .35s}
+.node.ok .ic{background:var(--ok-soft);color:var(--ok)}
+.node.ok:not(:last-child):after{background:var(--ok)}
+.node.warn .ic{background:var(--warn-soft);color:var(--warn)}
+.node.bad .ic{background:var(--bad-soft);color:var(--bad);border-color:var(--bad);animation:shake .5s 1}
+.node.bad:not(:last-child):after,.node.skip:not(:last-child):after{background:repeating-linear-gradient(90deg,var(--line) 0 6px,transparent 6px 11px)}
+.node.skip .ic{opacity:.45}
+.node.run .ic{color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,var(--card))}
+.node.run .ic:before{content:"";position:absolute;inset:-6px;border-radius:22px;border:3px solid transparent;border-top-color:var(--brand);border-right-color:var(--brand);animation:spin .9s linear infinite}
+.node .tag{position:absolute;top:-12px;background:var(--bad);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;z-index:2;white-space:nowrap}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shake{20%,60%{transform:translateX(-4px)}40%,80%{transform:translateX(4px)}}
+
+/* ---------- progress ---------- */
+.prog{height:8px;border-radius:99px;background:var(--soft);overflow:hidden;margin:22px 0 10px}
+.prog i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .5s ease}
+.now{text-align:center;font-size:18px;font-weight:600;min-height:27px}
+.now small{display:block;font-size:14px;font-weight:400;color:var(--muted)}
+
+/* ---------- result ---------- */
+.res{display:flex;gap:18px;align-items:flex-start}
+.badge{width:64px;height:64px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff}
+.badge svg{width:34px;height:34px}
+.res.good .badge{background:var(--ok)}.res.warn .badge{background:var(--warn)}.res.bad .badge{background:var(--bad)}
+.res h2{margin:2px 0 6px;font-size:24px;line-height:1.25;letter-spacing:-.2px}
+.res p{margin:0;color:var(--muted);font-size:16px}
+.verdict-card.good{background:linear-gradient(180deg,var(--ok-soft),var(--card) 70%)}
+.verdict-card.warn{background:linear-gradient(180deg,var(--warn-soft),var(--card) 70%)}
+.verdict-card.bad{background:linear-gradient(180deg,var(--bad-soft),var(--card) 70%)}
+h3{font-size:18px;margin:0 0 14px}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:s}
+.steps li{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:14px;background:var(--soft);cursor:pointer;transition:.2s;counter-increment:s}
+.steps li:before{content:counter(s);width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;font-weight:700;font-size:14px;
+  display:flex;align-items:center;justify-content:center;flex:none}
+.steps li.done{opacity:.55;text-decoration:line-through}
+.steps li.done:before{content:"✓";background:var(--ok)}
+.hint{font-size:13px;color:var(--muted);margin-top:10px}
+.call{border:2px dashed color-mix(in srgb,var(--brand) 45%,transparent)}
+.call .script{background:var(--soft);border-radius:12px;padding:14px 16px;font-size:15px;margin:10px 0 12px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:12px;padding:12px 18px;font:inherit;font-weight:600;cursor:pointer;
+  background:var(--brand);color:#fff;transition:.15s}
+.btn:hover{filter:brightness(1.07)}
+.btn.sec{background:var(--soft);color:var(--text)}
+.btns{display:flex;gap:10px;flex-wrap:wrap}
+.speed{display:flex;align-items:center;gap:20px}
+.speed .big{font-size:44px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1}
+.speed .big small{font-size:16px;font-weight:600;color:var(--muted);margin-left:4px;letter-spacing:0}
+.gauge{width:120px;height:68px;flex:none}
+.other{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.other:first-of-type{border-top:0;padding-top:0}
+.other .dot{width:10px;height:10px;border-radius:50%;margin-top:7px;flex:none;background:var(--warn)}
+.other b{display:block}
+.hist{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.hist div{background:var(--soft);border-radius:14px;padding:12px 14px}
+.hist b{display:block;font-size:22px}
+.monhead{display:flex;align-items:center;gap:16px;justify-content:space-between}
+.bigsw{position:relative;width:64px;height:36px;flex:none;cursor:pointer}
+.bigsw input{position:absolute;opacity:0}
+.bigsw span{position:absolute;inset:0;border-radius:99px;background:var(--idle);transition:.2s}
+.bigsw span:after{content:"";position:absolute;top:4px;left:4px;width:28px;height:28px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px #0003}
+.bigsw input:checked+span{background:var(--ok)}.bigsw input:checked+span:after{left:32px}
+.bigsw input:focus-visible+span{outline:3px solid color-mix(in srgb,var(--brand) 40%,transparent);outline-offset:3px}
+.opts{display:grid;gap:10px;margin:16px 0 20px;padding:14px 16px;background:var(--soft);border-radius:14px}
+.opts .opt{color:var(--text)}
+.row2{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--soft);border-radius:10px;padding:3px}
+.seg button{border:0;background:none;color:var(--muted);padding:5px 12px;border-radius:8px;cursor:pointer;font:inherit;font-size:14px}
+.seg button.on{background:var(--card);color:var(--text);font-weight:600;box-shadow:0 1px 2px #0001}
+.tl{position:relative;height:34px;border-radius:10px;background:var(--idle);overflow:hidden}
+.tl i{position:absolute;top:0;bottom:0}
+.tl .up{background:var(--ok)}.tl .out{background:var(--bad);min-width:3px}.tl .blip{background:var(--warn);min-width:2px}
+.tlx{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px}
+.legend2{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:8px 0 16px}
+.legend2 i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.jr{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+.jr .t{min-width:96px;font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px}
+.jr .who{font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.who.home{background:var(--warn-soft);color:var(--warn)}.who.prov{background:var(--bad-soft);color:var(--bad)}.who.rtr{background:var(--warn-soft);color:var(--warn)}
+.vd{border-radius:14px;padding:14px 16px;margin-bottom:12px;background:var(--warn-soft)}
+.vd.critical{background:var(--bad-soft)}
+.vd b{display:block;font-size:16px}
+.vd ol{margin:8px 0 0;padding-left:20px}
+.vd .times{font-size:13px;color:var(--muted);margin-top:6px}
+.fixbtn{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+.btn.fix{background:var(--ok);color:#fff}
+.btn:disabled{opacity:.6;cursor:wait}
+details summary{cursor:pointer;list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary:before{content:"▸ ";color:var(--muted)}
+details[open] summary:before{content:"▾ "}
+.tools{display:grid;gap:10px;margin-top:14px}
+.tool{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;background:var(--soft);flex-wrap:wrap}
+.tool .muted{font-size:13px}
+.tool>div{flex:1;min-width:200px}
+.tool .btn.sec{background:var(--card);border:1px solid var(--line);flex:none}
+.about{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.about img{border-radius:10px}
+.upd{background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 14%,var(--card)),var(--card));border:1px solid color-mix(in srgb,var(--brand) 35%,transparent)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:12px 18px;border-radius:12px;
+  box-shadow:var(--shadow);z-index:20;max-width:min(560px,92vw);font-size:15px}
+.hidden{display:none!important}
+.fade{animation:fade .4s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (max-width:640px){
+  .chain{grid-template-columns:repeat(3,1fr);row-gap:18px}
+  .node:nth-child(3):after{display:none}
+  .node .ic{width:54px;height:54px}.node:not(:last-child):after{top:27px;left:calc(50% + 29px);right:calc(-50% + 29px)}
+  .hero h1{font-size:24px}.go{width:170px;height:170px}
+  .res{flex-direction:column;gap:12px}.res h2{font-size:21px}
+  .hist{grid-template-columns:1fr}
+  .card{padding:18px;border-radius:16px}
+}
+@media print{.top,.live,.btns,#idle{display:none!important}body{background:#fff}.card{box-shadow:none;border:1px solid #ddd}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo">🐼 Проверка интернета</div>
+  <span class="sp"></span>
+  <a href="/pro" title="Графики, журнал событий, роутер, нагрузка">Для специалистов →</a>
+</div>
+<main>
+  <div class="live" id="live"><span class="d"></span><span id="liveText">Подключаюсь…</span><span class="muted" id="liveHist"></span></div>
+
+  <!-- idle -->
+  <section class="card hero" id="idle">
+    <h1>Что-то не так с интернетом?</h1>
+    <p>Нажмите кнопку — программа сама проверит компьютер, роутер и провайдера<br>и простыми словами скажет, в чём проблема и что делать.</p>
+    <button class="go" id="go" aria-label="Проверить интернет">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Проверить
+    </button>
+    <label class="opt"><input type="checkbox" id="speed" checked><span class="sw"></span>Также измерить скорость (+10 секунд)</label>
+  </section>
+
+  <!-- running + result share the chain -->
+  <section class="card hidden" id="chainCard">
+    <div class="chain" id="chain"></div>
+    <div id="progressBox">
+      <div class="prog"><i id="bar"></i></div>
+      <div class="now" id="now"></div>
+    </div>
+  </section>
+
+  <div id="result" class="hidden"></div>
+
+  <!-- continuous monitoring -->
+  <section class="card" id="monCard">
+    <div class="monhead">
+      <div>
+        <h3 style="margin:0">Постоянное наблюдение</h3>
+        <div class="muted" id="monState" style="font-size:14px">…</div>
+      </div>
+      <label class="bigsw" title="Включить / выключить наблюдение"><input type="checkbox" id="swMon"><span></span></label>
+    </div>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" id="swAuto"><span class="sw"></span>Запускать вместе с Windows (тихо, в фоне)</label>
+      <label class="opt"><input type="checkbox" id="swNotify"><span class="sw"></span>Уведомлять, когда интернет пропадает и возвращается</label>
+    </div>
+    <div class="row2">
+      <b>Когда пропадал интернет</b>
+      <div class="seg" id="jRange"><button data-h="24" class="on">Сутки</button><button data-h="168">Неделя</button></div>
+    </div>
+    <div class="tl" id="tl"></div>
+    <div class="tlx" id="tlx"></div>
+    <div class="legend2"><span><i style="background:var(--ok)"></i>интернет был</span><span><i style="background:var(--bad)"></i>обрыв</span>
+      <span><i style="background:var(--warn)"></i>микрообрыв</span><span><i style="background:var(--idle)"></i>не наблюдали</span></div>
+    <div id="verdicts"></div>
+    <div id="journal"></div>
+  </section>
+
+  <section class="card" id="toolsCard">
+    <details>
+      <summary><h3 style="display:inline;margin:0">Быстрые исправления</h3> <span class="muted" style="font-size:14px">— если знаете, что нужно</span></summary>
+      <div class="tools" id="tools"></div>
+    </details>
+  </section>
+
+  <section class="card" id="aboutCard">
+    <div class="about">
+      <img src="/favicon.ico" alt="" width="40" height="40">
+      <div style="flex:1;min-width:200px">
+        <b>Panda Internet Diagnostic <span id="ver"></span></b>
+        <div class="muted" style="font-size:14px" id="updState">…</div>
+      </div>
+      <div class="btns">
+        <button class="btn sec" id="bUpd">Проверить обновления</button>
+        <button class="btn sec" id="bQuit" title="Полностью закрыть программу и остановить наблюдение">Выйти</button>
+      </div>
+    </div>
+    <label class="opt" style="margin-top:14px"><input type="checkbox" id="swAU"><span class="sw"></span>Обновляться автоматически (без переустановки)</label>
+    <div class="muted" style="font-size:13px;margin-top:10px" id="adminState"></div>
+  </section>
+</main>
+<div class="toast hidden" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dur = s => { s = Math.round(s || 0); if (s < 60) return s + " сек"; if (s < 3600) return Math.round(s/60) + " мин"; return Math.floor(s/3600) + " ч " + Math.round(s%3600/60) + " мин"; };
+const hhmm = t => new Date(t*1000).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
+const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return n + " " + (m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 10 || h >= 20) ? b : c); };
+
+const I = {
+  computer:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><path d="M2 9a15 15 0 0 1 20 0"/><circle cx="12" cy="19.5" r=".8" fill="currentColor"/></svg>',
+  cable:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="8" rx="1.5"/><path d="M9.5 3v3M12 3v3M14.5 3v3M12 11v4a4 4 0 0 1-4 4H5"/></svg>',
+  router:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 13 5 6M17 13l2-7"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="10.5" cy="16.5" r=".8" fill="currentColor"/><path d="M14 16.5h4"/></svg>',
+  line:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V9l8-5 8 5v12"/><path d="M9 21v-6h6v6"/><path d="M12 4V2"/></svg>',
+  provider:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  sites:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.5" r=".6" fill="currentColor"/><circle cx="8.5" cy="6.5" r=".6" fill="currentColor"/><path d="M7 14h6M7 17h10"/></svg>',
+  ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v8"/><circle cx="12" cy="18.5" r=".9" fill="currentColor"/></svg>',
+  bad:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg>',
+};
+
+const NODES = [
+  {key:"computer", name:"Компьютер"},
+  {key:"link", name:"Wi-Fi / кабель"},
+  {key:"router", name:"Роутер"},
+  {key:"line", name:"Линия провайдера"},
+  {key:"provider", name:"Интернет"},
+  {key:"sites", name:"Сайты"},
+];
+const RUN_TEXT = {
+  computer:["Проверяю компьютер", "сетевая карта, настройки, журнал ошибок Windows"],
+  link:["Проверяю связь с роутером", "Wi-Fi сигнал или сетевой кабель"],
+  router:["Проверяю роутер", "отвечает ли, не перегружен ли, есть ли связь с провайдером"],
+  line:["Проверяю линию провайдера", "кабель/оптика от провайдера до роутера"],
+  provider:["Проверяю выход в интернет", "доступность серверов по всему миру"],
+  sites:["Проверяю, открываются ли сайты", "поиск адресов сайтов (DNS) и загрузка страниц"],
+  speed:["Измеряю скорость", "скачиваю тестовый файл — около 10 секунд"],
+};
+let linkIcon = "link", running = false, shown = 0, lastData = null, timer = null;
+
+function drawChain(states = {}, texts = {}, tagKey = null) {
+  $("#chain").innerHTML = NODES.map(n => {
+    const st = states[n.key] || "idle";
+    const icon = n.key === "link" ? I[linkIcon] : I[n.key];
+    return `<div class="node ${st}">${tagKey === n.key ? '<span class="tag">Проблема здесь</span>' : ""}
+      <div class="ic">${icon}</div><div class="nm">${n.name}</div><div class="st">${esc(texts[n.key] || "")}</div></div>`;
+  }).join("");
+}
+
+async function start() {
+  if (running) return;
+  const speed = $("#speed").checked;
+  try { await fetch("/api/check?speed=" + (speed ? 1 : 0), {method:"POST"}); } catch (e) { return; }
+  running = true; shown = 0;
+  $("#idle").classList.add("hidden"); $("#result").classList.add("hidden"); $("#result").innerHTML = "";
+  $("#chainCard").classList.remove("hidden"); $("#progressBox").classList.remove("hidden");
+  drawChain(); $("#bar").style.width = "3%";
+  clearInterval(timer); timer = setInterval(poll, 450);
+}
+$("#go").onclick = start;
+
+function order(speed) { return NODES.map(n => n.key).concat(speed ? ["speed"] : []); }
+
+async function poll() {
+  let d; try { d = await (await fetch("/api/check")).json(); } catch (e) { return; }
+  lastData = d; updateLive(d);
+  if (!running) return;
+  const seq = order(d.speed), steps = d.steps || {};
+  // advance the visible pointer at most one step per tick so every step is seen
+  const doneCount = seq.filter(k => steps[k] === "done").length;
+  if (shown < doneCount) shown++;
+  const finished = !d.running && d.result;
+  if (finished && shown < seq.length) shown = Math.min(seq.length, shown + 1);
+  const states = {};
+  seq.forEach((k, i) => { if (i < shown) states[k] = "ok"; else if (i === shown) states[k] = "run"; });
+  drawChain(states);
+  $("#bar").style.width = Math.max(3, Math.round(shown / seq.length * 100)) + "%";
+  const cur = seq[Math.min(shown, seq.length - 1)];
+  const t = RUN_TEXT[cur] || ["Проверяю…", ""];
+  $("#now").innerHTML = `${t[0]}…<small>${t[1]}</small>`;
+  if (finished && shown >= seq.length) { running = false; clearInterval(timer); timer = setInterval(poll, 5000); showResult(d.result); }
+}
+
+function showResult(r) {
+  $("#progressBox").classList.add("hidden");
+  const states = {}, texts = {};
+  (r.checks || []).forEach(c => { states[c.key] = c.state; texts[c.key] = c.text; });
+  const tag = r.status !== "good" && (r.checks || []).find(c => c.state === "bad") ? (r.checks.find(c => c.state === "bad").key) : (r.status === "bad" ? r.where : null);
+  drawChain(states, texts, tag);
+  const icon = r.status === "good" ? I.ok : r.status === "warn" ? I.warn : I.bad;
+  let html = `<section class="card verdict-card ${r.status} fade"><div class="res ${r.status}"><div class="badge">${icon}</div>
+      <div><h2>${esc(r.headline)}</h2><p>${esc(r.explanation)}</p></div></div></section>`;
+  if (r.steps && r.steps.length) {
+    html += `<section class="card fade"><h3>Что сделать</h3>${r.history_times ? `<div class="muted" style="margin:-6px 0 12px">Когда случалось: ${esc(r.history_times)}</div>` : ""}<ol class="steps">${r.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>${fixButtons(r.fixes)}
+      <div class="hint">Нажимайте на шаг, когда выполните его. После этого — «Проверить ещё раз».</div></section>`;
+  }
+  if (r.call_provider && r.provider_text) {
+    html += `<section class="card call fade"><h3>📞 Если не помогло — позвоните провайдеру</h3>
+      <div class="muted">Это проблема на стороне провайдера. Прочитайте или отправьте в чат поддержки этот текст:</div>
+      <div class="script" id="script">${esc(r.provider_text)}</div>
+      <div class="btns"><button class="btn sec" id="copy">Скопировать текст</button></div></section>`;
+  }
+  if (r.speed_mbps != null) {
+    const pct = Math.min(1, Math.log10(Math.max(1, r.speed_mbps)) / 3);
+    const a = Math.PI * (1 - pct), x = 60 + 50 * Math.cos(a), y = 62 - 50 * Math.sin(a);
+    html += `<section class="card fade"><h3>Скорость интернета</h3><div class="speed">
+      <svg class="gauge" viewBox="0 0 120 68"><path d="M10 62a50 50 0 0 1 100 0" fill="none" stroke="var(--soft)" stroke-width="10" stroke-linecap="round"/>
+      <path d="M10 62A50 50 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}" fill="none" stroke="var(--brand)" stroke-width="10" stroke-linecap="round"/></svg>
+      <div><div class="big">${Math.round(r.speed_mbps)}<small>Мбит/с</small></div><div class="muted">${esc(r.speed_text)}</div></div></div></section>`;
+  }
+  if (r.others && r.others.length) {
+    html += `<section class="card fade"><h3>Ещё мы заметили</h3>${r.others.map(o => `<div class="other"><span class="dot" style="background:var(--${o.level === "critical" ? "bad" : "warn"})"></span>
+      <div><b>${esc(o.headline)}</b><span class="muted">${esc(o.text)}</span>${o.steps && o.steps.length ? `<div style="margin-top:4px">→ ${esc(o.steps[0])}</div>` : ""}${fixButtons(o.fixes)}</div></div>`).join("")}</section>`;
+  }
+  if (r.wifi_tips && r.wifi_tips.length) {
+    html += `<section class="card fade"><h3>📶 Совет по Wi-Fi</h3>${r.wifi_tips.map(t => `<div class="other"><span class="dot" style="background:var(--brand)"></span><div>${esc(t)}</div></div>`).join("")}</section>`;
+  }
+  html += `<div class="btns fade" style="margin-top:6px"><button class="btn" id="again">Проверить ещё раз</button>
+    <button class="btn sec" onclick="window.print()">Сохранить / распечатать отчёт</button>
+    <a class="btn sec" href="/pro">Подробности для специалиста</a></div>`;
+  $("#result").innerHTML = html; $("#result").classList.remove("hidden");
+  document.querySelectorAll(".steps li").forEach(li => li.onclick = () => li.classList.toggle("done"));
+  const cp = $("#copy"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#script").innerText); cp.textContent = "Скопировано ✓"; } catch (e) {
+    const rg = document.createRange(); rg.selectNodeContents($("#script")); getSelection().removeAllRanges(); getSelection().addRange(rg); cp.textContent = "Нажмите Ctrl+C"; } };
+  $("#again").onclick = start;
+  $("#result").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function updateLive(d) {
+  const live = $("#live"), h = d.history || {};
+  // code was hot-updated in the background -> reload the page to get the new interface
+  if (loadedVersion && d.version && d.version !== loadedVersion && !running) { location.reload(); return; }
+  applySettings(d.settings);
+  if (d.settings && !d.settings.monitoring) {
+    live.className = "live"; live.querySelector(".d").style.background = "var(--idle)";
+    $("#liveText").textContent = "Наблюдение выключено"; $("#liveHist").textContent = "Включите его внизу страницы, чтобы ловить обрывы";
+    return;
+  }
+  live.querySelector(".d").style.background = "";
+  if (!d.internet) { live.className = "live down"; $("#liveText").innerHTML = `<b>Интернет пропал ${dur(d.down_for)} назад</b> — нажмите «Проверить», чтобы узнать причину`; }
+  else { live.className = "live"; $("#liveText").textContent = "Сейчас интернет работает"; }
+  let t;
+  const n = (h.outages || 0) + (h.blips || 0);
+  if (!n) t = h.monitoring_sec > 3600 ? "За сутки обрывов не было" : `Слежу за связью ${dur(h.monitoring_sec)} — обрывов не было`;
+  else t = `За сутки пропадал ${plural(n, "раз", "раза", "раз")}` + (h.last ? `, последний в ${hhmm(h.last.start)}` : "") + (h.top_cause ? ` · чаще всего: ${h.top_cause}` : "");
+  $("#liveHist").textContent = t;
+}
+
+// ------------------------------------------------------------ continuous monitoring block
+let jHours = 24, settingsBusy = false;
+async function saveSettings(patch) {
+  settingsBusy = true;
+  try {
+    const r = await fetch("/api/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(patch)});
+    const s = await r.json(); settingsBusy = false; applySettings(s);
+  } catch (e) {}
+  settingsBusy = false; loadJournal();
+}
+function applySettings(s) {
+  if (!s || settingsBusy) return;
+  $("#swMon").checked = !!s.monitoring; $("#swAuto").checked = !!s.autostart; $("#swNotify").checked = s.notify !== false;
+  $("#monState").textContent = s.monitoring ? "Включено — проверяю связь каждую секунду и запоминаю каждый обрыв с причиной"
+                                            : "Выключено — обрывы не записываются";
+  $("#swNotify").disabled = !s.monitoring;
+}
+$("#swMon").onchange = e => saveSettings({monitoring: e.target.checked});
+$("#swAuto").onchange = e => saveSettings({autostart: e.target.checked});
+$("#swNotify").onchange = e => saveSettings({notify: e.target.checked});
+document.querySelectorAll("#jRange button").forEach(b => b.onclick = () => {
+  jHours = +b.dataset.h; document.querySelectorAll("#jRange button").forEach(x => x.classList.toggle("on", x === b)); loadJournal(); });
+
+const WHO = {router:["rtr","роутер"], wifi:["home","Wi-Fi"], lan:["home","кабель"], pc:["home","компьютер"],
+             modem:["prov","провайдер"], optics:["prov","провайдер"], wan:["prov","провайдер"], isp:["prov","провайдер"], internet:["prov","интернет"]};
+const fmtT = (t, long) => new Date(t*1000).toLocaleString("ru-RU", long ? {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"} : {hour:"2-digit", minute:"2-digit"});
+
+async function loadJournal() {
+  let j; try { j = await (await fetch(`/api/journal?hours=${jHours}`)).json(); } catch (e) { return; }
+  const span = j.now - j.since, x = t => Math.max(0, Math.min(100, (t - j.since) / span * 100));
+  // green = periods when monitoring actually ran (from stored measurements)
+  let html = (j.covered || []).map(([a,b]) => `<i class="up" style="left:${x(a)}%;width:${Math.max(.3, x(Math.min(b, j.now)) - x(a))}%"></i>`).join("");
+  html += j.items.map(e => `<i class="${e.kind === "outage" ? "out" : "blip"}" title="${esc(fmtT(e.start, true) + " — " + e.cause)}"
+    style="left:${x(e.start)}%;width:${Math.max(0, x(e.end || j.now) - x(e.start))}%"></i>`).join("");
+  $("#tl").innerHTML = html;
+  const ticks = 5; $("#tlx").innerHTML = Array.from({length: ticks}, (_, i) => `<span>${fmtT(j.since + span * i / (ticks - 1), jHours > 24)}</span>`).join("");
+  $("#verdicts").innerHTML = (j.verdicts || []).map(v => `<div class="vd ${v.level}"><b>${esc(v.headline)}</b><span class="muted">${esc(v.text)}</span>
+    <ol>${v.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>${v.times ? `<div class="times">Когда: ${esc(v.times)}</div>` : ""}</div>`).join("");
+  const items = j.items.slice(0, 30);
+  $("#journal").innerHTML = items.length ? items.map(e => { const w = WHO[e.area] || ["prov", "?"];
+      const d = e.end ? Math.round(e.end - e.start) : null;
+      return `<div class="jr"><div class="t">${fmtT(e.start, true)}</div><div style="flex:1">${esc(e.cause)}
+        <div class="muted" style="font-size:13px">${e.kind === "outage" ? "Обрыв" : "Микрообрыв"}${d != null ? " · " + dur(d) : " · продолжается"}</div></div>
+        <span class="who ${w[0]}">${w[1]}</span></div>`; }).join("")
+    : `<div class="muted" style="padding:6px 0">${j.monitoring ? "За этот период интернет не пропадал ни разу 👍" : "Наблюдение выключено — включите переключатель выше."}</div>`;
+}
+
+// ------------------------------------------------------------ fixes, updates, about
+let APP = null, FIX = {}, loadedVersion = null;
+const post = (url, body) => fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body || {})}).then(r => r.json());
+function toast(msg, ms = 5000) { const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hidden"), ms); }
+
+async function runFix(id, btn) {
+  const f = FIX[id]; if (!f) return;
+  if (!confirm(`${f.title}\n\n${f.text}\n\nВыполнить?`)) return;
+  const old = btn ? btn.textContent : ""; if (btn) { btn.disabled = true; btn.textContent = "Выполняю…"; }
+  let r; try { r = await post("/api/fix", {action: id}); } catch (e) { r = {ok:false, message:"Программа не ответила"}; }
+  if (btn) { btn.disabled = false; btn.textContent = r.ok ? "Готово ✓" : old; }
+  toast(r.message, 7000);
+}
+function fixButtons(ids) {
+  ids = (ids || []).filter(id => FIX[id]); if (!ids.length) return "";
+  return `<div class="fixbtn">${ids.map(id => `<button class="btn fix" data-fix="${id}">🛠 ${esc(FIX[id].title)}</button>`).join("")}</div>`;
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-fix]"); if (b) runFix(b.dataset.fix, b); });
+
+function renderTools() {
+  $("#tools").innerHTML = Object.values(FIX).map(f => `<div class="tool"><div><b>${esc(f.title)}</b><div class="muted">${esc(f.text)}</div></div>
+    <button class="btn sec" data-fix="${f.id}">Выполнить</button></div>`).join("");
+}
+
+function renderAbout() {
+  if (!APP) return;
+  $("#ver").textContent = "v" + APP.version;
+  const u = APP.update || {}, info = u.info || {};
+  let st;
+  if (u.applying) st = "Устанавливаю обновление…";
+  else if (u.checking) st = "Проверяю обновления…";
+  else if (u.error) st = u.error;
+  else if (info.available) st = `Доступна новая версия ${info.latest}` + (info.can_apply ? "" : " — скачайте её со страницы релизов");
+  else if (u.last_check) st = `Установлена последняя версия · проверено в ${hhmm(u.last_check)}`;
+  else st = APP.frozen ? "Обновления проверяются автоматически" : "Запущено из исходников — обновления через git pull";
+  if (u.updated_from && u.updated_from !== APP.version) st = `Обновлено с ${u.updated_from} до ${APP.version} ✓`;
+  $("#updState").textContent = st;
+  $("#aboutCard").classList.toggle("upd", !!info.available);
+  const b = $("#bUpd");
+  b.textContent = info.available && info.can_apply ? `Обновить до ${info.latest}` : info.available ? "Открыть страницу загрузки" : "Проверить обновления";
+  b.disabled = !!(u.checking || u.applying);
+  $("#swAU").checked = (APP.settings || {}).auto_update !== false;
+  $("#adminState").textContent = APP.admin ? "Запущено с правами администратора — доступны все проверки и исправления."
+    : "Запущено без прав администратора — часть исправлений недоступна. Запустите программу от имени администратора.";
+}
+async function loadApp() {
+  try { APP = await (await fetch("/api/app")).json(); } catch (e) { return; }
+  FIX = {}; (APP.fixes || []).forEach(f => FIX[f.id] = f);
+  if (!loadedVersion) loadedVersion = APP.version;
+  renderTools(); renderAbout();
+}
+$("#bUpd").onclick = async () => {
+  const info = (APP && APP.update && APP.update.info) || {};
+  if (info.available && !info.can_apply) { window.open(info.page, "_blank"); return; }
+  $("#bUpd").disabled = true;
+  if (info.available && info.can_apply) { $("#updState").textContent = "Скачиваю и устанавливаю…"; await post("/api/update/apply"); }
+  else { $("#updState").textContent = "Проверяю…"; await post("/api/update/check"); }
+  await loadApp();
+};
+$("#swAU").onchange = e => saveSettings({auto_update: e.target.checked});
+$("#bQuit").onclick = async () => {
+  if (!confirm("Закрыть программу? Наблюдение за интернетом остановится до следующего запуска.")) return;
+  try { await post("/api/quit"); } catch (e) {}
+  document.body.innerHTML = '<div style="text-align:center;padding:80px 20px;font-size:18px">Программа закрыта. Это окно можно закрыть.</div>';
+};
+
+async function boot() {
+  let d; try { d = await (await fetch("/api/check")).json(); } catch (e) { $("#liveText").textContent = "Программа не запущена — откройте start.bat"; return; }
+  lastData = d; updateLive(d); applySettings(d.settings); loadJournal(); setInterval(loadJournal, 15000);
+  await loadApp(); setInterval(loadApp, 20000);
+  try { const s = await (await fetch("/api/state")).json(); if (s.pc && s.pc.is_wifi === false) linkIcon = "cable"; } catch (e) {}
+  if (d.running) { running = true; $("#idle").classList.add("hidden"); $("#chainCard").classList.remove("hidden"); drawChain(); timer = setInterval(poll, 450); }
+  else timer = setInterval(poll, 5000);
+}
+boot();
+</script>
+</body>
+</html>

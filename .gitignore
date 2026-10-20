@@ -1,0 +1,23 @@
+# local data and secrets (router passwords live in config.json)
+config.json
+data/
+*.sqlite
+*.log
+
+# build output
+build/
+dist/
+*.spec
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# tools
+.claude/
+.codegraph/
+.vscode/
+.idea/
+tools/icon.png
