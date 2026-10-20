@@ -314,6 +314,11 @@ def summarize(snap, res):
             "headline": "Нет разрешения на сканирование Wi-Fi", "level": "warning", "fixes": ["location"],
             "text": "Windows не даёт программе видеть соседние сети без доступа к местоположению — без этого не подобрать лучший канал.",
             "steps": ["Нажмите «Разрешить» и включите доступ к местоположению для приложений рабочего стола."]})
+    r = snap.get("router") or {}
+    from .routers import catalog
+    info = catalog.CATALOG.get(r.get("type")) or {}
+    if info.get("needs_password") and r.get("auth") != "ok":
+        out["router_access"] = {"name": info["name"], "model": r.get("model"), "gives": info["gives"], "auth": r.get("auth")}
     add_fixes(out)
     return out
 
@@ -338,8 +343,10 @@ AREA_PLAIN = {
     "wan": "Интернет переставал приходить от провайдера",
     "isp": "Сбой в сети провайдера",
     "internet": "Интернет был недоступен",
+    "router_dns": "Не работал DNS роутера — связь была, но сайты не открывались",
+    "dns": "Не работал DNS провайдера — связь была, но сайты не открывались",
 }
-PROVIDER_AREAS = {"modem", "optics", "wan", "isp"}
+PROVIDER_AREAS = {"modem", "optics", "wan", "isp", "dns"}
 
 
 def event_area(e):
@@ -351,6 +358,8 @@ def event_area(e):
 
 def plain_cause(e):
     d = e.get("detail") or {}
+    if e.get("kind") == "partial":
+        return "Часть интернета была недоступна (сбой маршрутизации у провайдера)"
     if d.get("router_reboot") or d.get("router_hang"):
         return e.get("cause")
     return AREA_PLAIN.get(event_area(e), e.get("cause") or "Интернет был недоступен")
@@ -441,6 +450,32 @@ def merge_history(summary, verdicts):
     for v in rest:
         summary.setdefault("others", []).insert(0, {"headline": v["headline"], "text": v["text"], "steps": v["steps"],
                                                     "level": v["level"], "code": v["code"]})
+    return add_fixes(summary)
+
+
+def merge_stability(summary, stab):
+    """Add the history-based verdict ("why is it unstable") to a one-shot check result."""
+    summary["stability"] = stab
+    v = (stab or {}).get("verdict") or {}
+    if v.get("culprit") in (None, "none", "unknown") or v.get("confidence", 0) < 40:
+        return add_fixes(summary)
+    hist = {"headline": v["headline"], "text": v.get("explanation") or "", "steps": v.get("steps") or [],
+            "level": "critical" if v["confidence"] >= 70 else "warning", "code": "stability_" + v["culprit"],
+            "fixes": v.get("fixes") or []}
+    if summary["status"] == "good":
+        summary.update({"status": "warn" if hist["level"] == "warning" else "bad", "headline": v["headline"],
+                        "explanation": "Прямо сейчас интернет работает, но по истории наблюдения: " + hist["text"],
+                        "steps": hist["steps"], "code": hist["code"], "history_times": v.get("times"),
+                        "confidence": v["confidence"], "patterns": stab.get("patterns") or [],
+                        "where": {"router": "router", "wifi": "link", "cable": "link", "pc": "computer", "line": "line",
+                                  "provider": "provider", "dns": "sites"}.get(v["culprit"])})
+        if v.get("call_provider") and v.get("provider_text"):
+            summary["call_provider"] = True
+            summary["provider_text"] = v["provider_text"]
+        summary = add_fixes(summary)
+        summary["fixes"] = list(dict.fromkeys((summary.get("fixes") or []) + hist["fixes"]))
+        return summary
+    summary.setdefault("others", []).insert(0, hist)
     return add_fixes(summary)
 
 

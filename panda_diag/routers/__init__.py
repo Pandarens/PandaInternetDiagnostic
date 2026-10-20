@@ -3,7 +3,9 @@ import re
 import urllib.error
 import urllib.request
 
+from . import catalog
 from .asus import AsusRouter
+from .base import _empty as _empty_result
 from .base import INSECURE, UA
 from .keenetic import KeeneticRouter
 from .mikrotik import MikroTikRouter
@@ -130,7 +132,8 @@ def make_driver(kind, rcfg, host):
     if kind == "xiaomi":
         return XiaomiRouter(host, p, u or "admin")
     if kind == "mikrotik":
-        return MikroTikRouter(host, u or "admin", p or "", rcfg.get("https", True), rcfg.get("wan_interface") or "ether1")
+        return MikroTikRouter(host, u or "admin", p or "", rcfg.get("https", True), rcfg.get("wan_interface") or "ether1",
+                              transport=rcfg.get("transport") or "auto")
     if kind == "keenetic":
         return KeeneticRouter(host, u, p)
     if kind == "asus":
@@ -158,13 +161,25 @@ def collect_router(rcfg, gateway, gw_mac, full=True, cache=None):
     if not host or rcfg.get("type") == "none":
         return None
     cache = cache if cache is not None else {}
-    if cache.get("host") != host:
-        kind, how = detect(host, gw_mac, rcfg.get("type"))
+    forced = rcfg.get("type") or "auto"
+    if cache.get("host") != host or cache.get("forced") != forced:
+        kind, how = detect(host, gw_mac, forced)
         cache.clear()
-        cache.update({"host": host, "kind": kind, "how": how})
+        cache.update({"host": host, "kind": kind, "how": how, "forced": forced})
     kind = cache["kind"]
-    res = make_driver(kind, rcfg, host).collect(full)
+    info = catalog.CATALOG.get(kind) or {}
+    if info.get("needs_password") and not rcfg.get("password"):
+        # don't guess logins (some routers lock out after failures) — ask the user instead
+        res = _empty_result(kind)
+        res["auth"] = "no_password"
+        res["notes"].append(f"{info['name']}: для полной диагностики введите пароль роутера в «Настройки → Роутер и модем». "
+                            f"Тогда будет видно: {info['gives']}.")
+    else:
+        res = make_driver(kind, rcfg, host).collect(full)
     res["detected_by"] = cache["how"]
+    res["host"] = host
+    res["vendor"] = (cache["how"] or {}).get("vendor")
+    res["kind_name"] = info.get("name", kind)
     if not _has_wan(res) and kind not in ("upnp", "snmp"):
         for fb in ("upnp", "snmp"):
             alt = make_driver(fb, rcfg, host).collect(full)

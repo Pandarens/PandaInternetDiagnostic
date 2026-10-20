@@ -169,6 +169,31 @@ details[open] summary:before{content:"▾ "}
 .upd{background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 14%,var(--card)),var(--card));border:1px solid color-mix(in srgb,var(--brand) 35%,transparent)}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:12px 18px;border-radius:12px;
   box-shadow:var(--shadow);z-index:20;max-width:min(560px,92vw);font-size:15px}
+.access{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:14px;margin-bottom:16px;flex-wrap:wrap;
+  background:color-mix(in srgb,var(--brand) 12%,var(--card));border:1px solid color-mix(in srgb,var(--brand) 35%,transparent)}
+dialog#setDlg{border:0;border-radius:20px;padding:0;width:min(720px,94vw);background:var(--card);color:var(--text);box-shadow:var(--shadow)}
+dialog#setDlg::backdrop{background:#0009}
+.setin{padding:22px;max-height:88vh;overflow:auto}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.grid2 label{display:flex;flex-direction:column;gap:5px;font-size:14px;color:var(--muted)}
+.grid2 input,.grid2 select{font:inherit;color:var(--text);background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.grid2 input:focus,.grid2 select:focus{outline:2px solid color-mix(in srgb,var(--brand) 45%,transparent);border-color:transparent}
+.detect{padding:12px 14px;border-radius:12px;background:var(--soft);font-size:14px}
+.help{margin-top:14px;font-size:14px;padding:12px 14px;border-radius:12px;border-left:4px solid var(--brand);background:var(--soft)}
+pre{background:var(--soft);border-radius:10px;padding:12px;font-size:12.5px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+#fScript{margin-top:14px}
+.okline{color:var(--ok);font-weight:600}.badline{color:var(--bad);font-weight:600}
+.stab{border-radius:16px;padding:16px 18px;margin:18px 0;background:var(--soft)}
+.stab.bad{background:var(--bad-soft)}.stab.warn{background:var(--warn-soft)}.stab.good{background:var(--ok-soft)}
+.stab h4{margin:0 0 4px;font-size:18px}
+.conf{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);margin:6px 0 10px}
+.conf .bar{flex:1;max-width:220px;height:8px;border-radius:99px;background:color-mix(in srgb,var(--text) 12%,transparent);overflow:hidden}
+.conf .bar i{display:block;height:100%;background:var(--brand);border-radius:99px}
+.stab ul{margin:6px 0 0;padding-left:20px}.stab li{margin:3px 0}
+.segs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.segs div{background:var(--card);border-radius:10px;padding:8px 10px;font-size:13px}
+.segs b{display:block;font-size:16px}
+@media (max-width:640px){.grid2,.segs{grid-template-columns:1fr}}
 .hidden{display:none!important}
 .fade{animation:fade .4s ease}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -188,9 +213,15 @@ details[open] summary:before{content:"▾ "}
 <div class="top">
   <div class="logo">🐼 Проверка интернета</div>
   <span class="sp"></span>
+  <a href="#" id="openSettings" title="Логин и пароль роутера, оптический терминал, тариф">⚙ Роутер и модем</a>
   <a href="/pro" title="Графики, журнал событий, роутер, нагрузка">Для специалистов →</a>
 </div>
 <main>
+  <div class="access hidden" id="accessBanner">
+    <div style="font-size:26px">🔑</div>
+    <div style="flex:1;min-width:220px"><b id="abTitle"></b><div class="muted" id="abText" style="font-size:14px"></div></div>
+    <button class="btn" id="abBtn">Подключить роутер</button>
+  </div>
   <div class="live" id="live"><span class="d"></span><span id="liveText">Подключаюсь…</span><span class="muted" id="liveHist"></span></div>
 
   <!-- idle -->
@@ -228,6 +259,7 @@ details[open] summary:before{content:"▾ "}
       <label class="opt"><input type="checkbox" id="swAuto"><span class="sw"></span>Запускать вместе с Windows (тихо, в фоне)</label>
       <label class="opt"><input type="checkbox" id="swNotify"><span class="sw"></span>Уведомлять, когда интернет пропадает и возвращается</label>
     </div>
+    <div id="stab"></div>
     <div class="row2">
       <b>Когда пропадал интернет</b>
       <div class="seg" id="jRange"><button data-h="24" class="on">Сутки</button><button data-h="168">Неделя</button></div>
@@ -264,6 +296,44 @@ details[open] summary:before{content:"▾ "}
   </section>
 </main>
 <div class="toast hidden" id="toast"></div>
+<dialog id="setDlg">
+  <form method="dialog" class="setin" id="setForm" onsubmit="return false">
+    <div class="row2" style="margin-bottom:4px"><h3 style="margin:0">Роутер и модем</h3><button class="btn sec" type="button" id="setClose">Закрыть</button></div>
+    <div class="muted" style="font-size:14px;margin-bottom:14px">С доступом к роутеру программа видит то, что не видно с компьютера: ошибки линии,
+      перезагрузки роутера, причину отключения от провайдера, нагрузку по устройствам. Пароли хранятся только на этом компьютере в зашифрованном виде.</div>
+    <div class="detect" id="setDetected"></div>
+    <div class="grid2">
+      <label>Тип роутера<select id="fType"></select></label>
+      <label>Адрес роутера<input id="fHost" placeholder="авто"></label>
+    </div>
+    <div class="grid2" id="fFields"></div>
+    <details id="fAdvWrap"><summary>Дополнительно</summary><div class="grid2" id="fAdv" style="margin-top:10px"></div></details>
+    <div class="help" id="fHelp"></div>
+    <div id="fScript" class="hidden">
+      <b>Включить доступ на MikroTik одной командой</b>
+      <div class="muted" style="font-size:13px">Winbox или WebFig → New Terminal → вставьте (замените пароль) → Enter. Создастся пользователь только для чтения,
+        а API откроется только для этого компьютера. Затем выберите способ «api», логин panda и ваш пароль.</div>
+      <pre id="fScriptText"></pre>
+      <button class="btn sec" type="button" id="fScriptCopy">Скопировать команды</button>
+    </div>
+    <h3 style="margin:20px 0 6px">Оптический терминал провайдера (если есть)</h3>
+    <div class="muted" style="font-size:13px" id="ontHelp"></div>
+    <div class="grid2" style="margin-top:10px">
+      <label>Адрес ONT<input id="oHost" placeholder="например 192.168.100.1"></label>
+      <label>Модель<select id="oType"><option value="auto">Определить</option><option value="huawei">Huawei</option><option value="zte">ZTE</option></select></label>
+      <label>Логин<input id="oUser" autocomplete="off"></label>
+      <label>Пароль<input id="oPass" type="password" autocomplete="new-password"></label>
+    </div>
+    <h3 style="margin:20px 0 6px">Тариф</h3>
+    <div class="grid2"><label>Скорость по тарифу, Мбит/с<input id="tariff" type="number" min="1" placeholder="например 500"></label></div>
+    <div class="muted" style="font-size:13px">Нужно, чтобы понимать, когда канал забит полностью.</div>
+    <div id="setResult" style="margin-top:14px"></div>
+    <div class="btns" style="margin-top:16px">
+      <button class="btn sec" type="button" id="setTest">Проверить подключение</button>
+      <button class="btn" type="button" id="setSave">Сохранить</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -366,6 +436,13 @@ function showResult(r) {
       <div class="script" id="script">${esc(r.provider_text)}</div>
       <div class="btns"><button class="btn sec" id="copy">Скопировать текст</button></div></section>`;
   }
+  if (r.router_access) {
+    const ra = r.router_access;
+    html += `<section class="card fade access" style="margin-bottom:16px"><div style="font-size:26px">🔑</div>
+      <div style="flex:1;min-width:220px"><b>Для точного ответа подключите роутер ${esc(ra.name)}${ra.model ? " (" + esc(ra.model) + ")" : ""}</b>
+      <div class="muted" style="font-size:14px">${ra.auth === "failed" ? "Сохранённый пароль не подошёл или доступ закрыт." : "Тогда программа увидит: " + esc(ra.gives) + "."}</div></div>
+      <button class="btn" onclick="openSettings()">Ввести пароль роутера</button></section>`;
+  }
   if (r.speed_mbps != null) {
     const pct = Math.min(1, Math.log10(Math.max(1, r.speed_mbps)) / 3);
     const a = Math.PI * (1 - pct), x = 60 + 50 * Math.cos(a), y = 62 - 50 * Math.sin(a);
@@ -435,7 +512,7 @@ $("#swNotify").onchange = e => saveSettings({notify: e.target.checked});
 document.querySelectorAll("#jRange button").forEach(b => b.onclick = () => {
   jHours = +b.dataset.h; document.querySelectorAll("#jRange button").forEach(x => x.classList.toggle("on", x === b)); loadJournal(); });
 
-const WHO = {router:["rtr","роутер"], wifi:["home","Wi-Fi"], lan:["home","кабель"], pc:["home","компьютер"],
+const WHO = {router_dns:["rtr","роутер"], dns:["prov","провайдер"], router:["rtr","роутер"], wifi:["home","Wi-Fi"], lan:["home","кабель"], pc:["home","компьютер"],
              modem:["prov","провайдер"], optics:["prov","провайдер"], wan:["prov","провайдер"], isp:["prov","провайдер"], internet:["prov","интернет"]};
 const fmtT = (t, long) => new Date(t*1000).toLocaleString("ru-RU", long ? {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"} : {hour:"2-digit", minute:"2-digit"});
 
@@ -451,6 +528,7 @@ async function loadJournal() {
   $("#verdicts").innerHTML = (j.verdicts || []).map(v => `<div class="vd ${v.level}"><b>${esc(v.headline)}</b><span class="muted">${esc(v.text)}</span>
     <ol>${v.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>${v.times ? `<div class="times">Когда: ${esc(v.times)}</div>` : ""}</div>`).join("");
   const items = j.items.slice(0, 30);
+  renderStability(j.stability);
   $("#journal").innerHTML = items.length ? items.map(e => { const w = WHO[e.area] || ["prov", "?"];
       const d = e.end ? Math.round(e.end - e.start) : null;
       return `<div class="jr"><div class="t">${fmtT(e.start, true)}</div><div style="flex:1">${esc(e.cause)}
@@ -525,10 +603,115 @@ $("#bQuit").onclick = async () => {
   document.body.innerHTML = '<div style="text-align:center;padding:80px 20px;font-size:18px">Программа закрыта. Это окно можно закрыть.</div>';
 };
 
+// ------------------------------------------------------------ router / ONT access
+let ACC = null;
+async function loadAccess() {
+  try { ACC = await (await fetch("/api/access")).json(); } catch (e) { return; }
+  const d = ACC.detected || {}, sch = ACC.schema || {};
+  const need = sch.needs_password && d.auth !== "ok";
+  $("#accessBanner").classList.toggle("hidden", !need);
+  if (need) {
+    $("#abTitle").textContent = `Подключите роутер ${sch.name}${d.model ? " (" + d.model + ")" : ""} — ответ будет точнее`;
+    $("#abText").textContent = d.auth === "failed" ? "Сохранённый пароль не подошёл или доступ закрыт — проверьте настройки."
+      : `Программа увидит: ${sch.gives}.`;
+  }
+}
+$("#abBtn").onclick = () => openSettings();
+$("#openSettings").onclick = e => { e.preventDefault(); openSettings(); };
+$("#setClose").onclick = () => $("#setDlg").close();
+
+function field(f, val, saved) {
+  if (f.type === "select") return `<label>${esc(f.label)}<select data-k="${f.key}">${(f.options || []).map(o => `<option ${o === val ? "selected" : ""}>${o}</option>`).join("")}</select></label>`;
+  const ph = f.type === "password" && saved ? "сохранён — оставьте пустым" : "";
+  return `<label>${esc(f.label)}<input data-k="${f.key}" type="${f.type === "password" ? "password" : "text"}" autocomplete="${f.type === "password" ? "new-password" : "off"}"
+    value="${f.type === "password" ? "" : esc(val ?? "")}" placeholder="${ph}"></label>`;
+}
+function renderSchema(sch) {
+  const r = ACC.router;
+  const vals = {username: r.username || (sch.defaults || {}).username || "", transport: r.transport, wan_interface: r.wan_interface};
+  $("#fFields").innerHTML = (sch.fields || []).map(f => field(f, vals[f.key], f.key === "password" ? r.has_password : r.has_snmp)).join("")
+    || `<div class="muted" style="font-size:14px">Для этого типа пароль не нужен.</div>`;
+  $("#fAdv").innerHTML = (sch.advanced || []).map(f => field(f, vals[f.key])).join("");
+  $("#fAdvWrap").classList.toggle("hidden", !(sch.advanced || []).length);
+  $("#fHelp").innerHTML = `<b>${esc(sch.name)}.</b> ${esc(sch.help)}<div class="muted" style="margin-top:6px">Даст: ${esc(sch.gives)}.</div>`;
+  $("#fScript").classList.toggle("hidden", sch.kind !== "mikrotik");
+  $("#fScriptText").textContent = ACC.mikrotik_script;
+}
+async function openSettings() {
+  await loadAccess(); if (!ACC) return;
+  const d = ACC.detected || {}, r = ACC.router, o = ACC.ont;
+  const st = d.auth === "ok" ? `<span class="okline">✓ подключён${d.transport ? " через " + esc(d.transport) : ""}</span>`
+    : d.fallback ? `<span class="badline">доступ не настроен</span> — сейчас видно только базовое через ${esc(d.fallback.toUpperCase())}`
+    : `<span class="badline">доступ не настроен</span>`;
+  $("#setDetected").innerHTML = `Найден роутер: <b>${esc(ACC.schema.name)}${d.model ? " · " + esc(d.model) : ""}</b> по адресу ${esc(ACC.gateway || "—")} — ${st}`;
+  $("#fType").innerHTML = `<option value="auto">Определить автоматически</option>` + ACC.kinds.map(k => `<option value="${k.kind}">${esc(k.name)}</option>`).join("") + `<option value="none">Не опрашивать роутер</option>`;
+  $("#fType").value = r.type || "auto"; $("#fHost").value = r.host || "";
+  renderSchema(ACC.schema);
+  $("#oHost").value = o.host || ""; $("#oType").value = o.type || "auto"; $("#oUser").value = o.username || "";
+  $("#oPass").value = ""; $("#oPass").placeholder = o.has_password ? "сохранён — оставьте пустым" : "";
+  $("#ontHelp").textContent = ACC.ont_help; $("#tariff").value = ACC.tariff_mbps || "";
+  $("#setResult").innerHTML = "";
+  $("#setDlg").showModal();
+}
+$("#fType").onchange = () => {
+  const k = $("#fType").value;
+  renderSchema(k === "auto" || k === "none" ? ACC.schema : (ACC.schemas[k] || ACC.schema));
+};
+function formBody() {
+  const router = {type: $("#fType").value, host: $("#fHost").value.trim()};
+  document.querySelectorAll("#fFields [data-k], #fAdv [data-k]").forEach(i => router[i.dataset.k] = i.value.trim());
+  return {router, ont: {host: $("#oHost").value.trim(), type: $("#oType").value, username: $("#oUser").value.trim(), password: $("#oPass").value},
+          tariff_mbps: $("#tariff").value ? +$("#tariff").value : null};
+}
+function showTest(r) {
+  const rt = r.router || {}, w = rt.wan || {};
+  let h = "";
+  if (rt.auth === "ok") h += `<div class="f ok"><div class="tt okline">✓ Роутер подключён${rt.transport ? " через " + esc(rt.transport) : ""}: ${esc(rt.model || rt.kind_name || "")}</div>
+      <div class="dd">Связь с провайдером: ${w.connected === false ? "нет" : w.connected ? "есть" : "—"}, кабель провайдера: ${w.link === false ? "НЕ подключён" : w.link ? "подключён" : "—"}${w.link_speed_mbps ? ", " + w.link_speed_mbps + " Мбит/с" : ""}</div></div>`;
+  else h += `<div class="f critical"><div class="tt badline">✗ Подключиться к роутеру не удалось</div><div class="dd">${esc((rt.notes || []).join("\n"))}</div></div>`;
+  if (r.ont) h += r.ont.auth === "ok" ? `<div class="f ok"><div class="tt okline">✓ ONT: оптический сигнал ${esc((r.ont.optics || {}).rx_dbm ?? "—")} дБм</div></div>`
+    : `<div class="f warning"><div class="tt">ONT: ${esc((r.ont.notes || ["нет ответа"]).join(" "))}</div></div>`;
+  $("#setResult").innerHTML = h;
+}
+$("#setTest").onclick = async () => {
+  const b = $("#setTest"); b.disabled = true; b.textContent = "Проверяю…"; $("#setResult").innerHTML = '<div class="muted">Подключаюсь к роутеру…</div>';
+  try { showTest(await post("/api/access/test", formBody())); } catch (e) { $("#setResult").textContent = "Программа не ответила"; }
+  b.disabled = false; b.textContent = "Проверить подключение";
+};
+$("#setSave").onclick = async () => {
+  const b = $("#setSave"); b.disabled = true; b.textContent = "Сохраняю…";
+  try { const r = await post("/api/access/save", formBody()); if (r.error) throw new Error(r.error); ACC = r; toast("Сохранено. Роутер будет опрошен в течение 30 секунд."); $("#setDlg").close(); setTimeout(loadAccess, 8000); }
+  catch (e) { toast("Не удалось сохранить: " + e.message, 7000); }
+  b.disabled = false; b.textContent = "Сохранить";
+};
+$("#fScriptCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#fScriptText").textContent); toast("Команды скопированы"); } catch (e) {} };
+
+// ------------------------------------------------------------ "why is it unstable" card
+function renderStability(st) {
+  if (!st || !st.verdict) { $("#stab").innerHTML = ""; return; }
+  const v = st.verdict, seg = st.segments || {};
+  const cls = v.culprit === "none" ? "good" : v.culprit === "unknown" ? "" : v.confidence >= 70 ? "bad" : "warn";
+  const segBox = (name, s) => s && s.sent ? `<div>${name}<b>${s.loss ?? 0}% потерь</b>${s.avg != null ? s.avg + " мс" : ""}</div>` : "";
+  $("#stab").innerHTML = `<div class="stab ${cls}"><div class="muted" style="font-size:13px">Почему пропадает интернет — вывод по наблюдению</div>
+    <h4>${esc(v.headline)}</h4>
+    ${v.culprit !== "none" && v.culprit !== "unknown" ? `<div class="conf">Уверенность<span class="bar"><i style="width:${v.confidence}%"></i></span>${v.confidence}%</div>` : ""}
+    ${v.explanation ? `<div>${esc(v.explanation)}</div>` : ""}
+    ${(st.evidence || []).length > 2 ? `<ul>${st.evidence.slice(2).map(e => `<li>${esc(e)}</li>`).join("")}</ul>` : ""}
+    ${(st.patterns || []).length ? `<ul>${st.patterns.map(p => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+    ${v.also ? `<div class="muted" style="margin-top:6px">Также возможна причина: ${esc(v.also)}</div>` : ""}
+    ${(v.steps || []).length ? `<ol style="margin:10px 0 0;padding-left:20px">${v.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}
+    ${fixButtons(v.fixes)}
+    ${v.times ? `<div class="muted" style="font-size:13px;margin-top:8px">Когда: ${esc(v.times)}</div>` : ""}
+    ${v.provider_text ? `<details style="margin-top:10px"><summary>Текст для провайдера</summary><div class="script" style="margin-top:8px">${esc(v.provider_text)}</div></details>` : ""}
+    <div class="segs">${segBox("Компьютер ↔ роутер", seg.home)}${segBox("До провайдера", seg.line)}${segBox("Интернет", seg.internet)}</div>
+  </div>`;
+}
+
 async function boot() {
   let d; try { d = await (await fetch("/api/check")).json(); } catch (e) { $("#liveText").textContent = "Программа не запущена — откройте start.bat"; return; }
   lastData = d; updateLive(d); applySettings(d.settings); loadJournal(); setInterval(loadJournal, 15000);
   await loadApp(); setInterval(loadApp, 20000);
+  loadAccess(); setInterval(loadAccess, 30000);
   try { const s = await (await fetch("/api/state")).json(); if (s.pc && s.pc.is_wifi === false) linkIcon = "cable"; } catch (e) {}
   if (d.running) { running = true; $("#idle").classList.add("hidden"); $("#chainCard").classList.remove("hidden"); drawChain(); timer = setInterval(poll, 450); }
   else timer = setInterval(poll, 5000);

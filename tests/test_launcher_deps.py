@@ -32,6 +32,7 @@ class LauncherDeps(unittest.TestCase):
                     needed |= imports(os.path.join(dp, f))
         needed = {m for m in needed if m.split(".")[0] not in OPTIONAL and not m.startswith("panda_diag")}
         missing = sorted(m for m in needed if m not in launcher and m.split(".")[0] in sys.stdlib_module_names
+                         and m.split(".")[0] not in sys.builtin_module_names
                          and not any(x == m or x.startswith(m + ".") for x in launcher))
         self.assertEqual(missing, [], f"add to launcher.py imports: {missing}")
 

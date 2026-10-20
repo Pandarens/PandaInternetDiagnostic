@@ -287,24 +287,31 @@ class XiaomiParsing(unittest.TestCase):
 
 
 class OutageDetector(unittest.TestCase):
-    def test_outage_and_blip(self):
+    def make(self):
         from panda_diag import monitor
-        cfg = {"outage_threshold_sec": 3, "anchors": ["1.1.1.1"], "ping_timeout_ms": 1000}
         m = monitor.Monitor.__new__(monitor.Monitor)
-        m.cfg = cfg
+        m.cfg = {"outage_threshold_sec": 3, "anchors": ["1.1.1.1"], "ping_timeout_ms": 1000}
         m.store = monitor.Store(os.path.join(tempfile.mkdtemp(), "t.sqlite"))
         m.net, m.wifi, m.targets = {"primary": {"status": "Up"}}, None, {}
-        m.down_since = m.outage_id = m.outage_chain = None
+        m.down_since = m.outage_id = m.outage_chain = m.outage_ctx = None
+        m.partial_since = m.partial_id = None
+        m.suppress_until, m._last_res, m._last_tick = 0, {}, None
         m.counts = {"outages": 0, "blips": 0, "downtime": 0.0}
         m.settings = {"notify": False}
+        m._context = lambda: {"hour": 20}
         m.pool = type("P", (), {"submit": lambda self, *a, **k: None})()
-        up = {"gateway": {"ok": True}, "isp_hop": {"ok": True}, "anchor:1.1.1.1": {"ok": True}}
-        down = {"gateway": {"ok": True}, "isp_hop": {"ok": False}, "anchor:1.1.1.1": {"ok": False}}
+        return m
+
+    UP = {"gateway": {"ok": True}, "isp_hop": {"ok": True}, "anchor:1.1.1.1": {"ok": True}}
+    DOWN = {"gateway": {"ok": True}, "isp_hop": {"ok": False}, "anchor:1.1.1.1": {"ok": False}}
+
+    def test_outage_and_blip(self):
+        m = self.make()
         t = 1000.0
-        for res in [up, down, up]:          # 1-second drop -> micro-drop
+        for res in [self.UP, self.DOWN, self.UP]:          # 1-second drop -> micro-drop
             m._tick(t, res)
             t += 1
-        for res in [down] * 6 + [up]:        # 6-second drop -> outage
+        for res in [self.DOWN] * 6 + [self.UP]:            # 6-second drop -> outage
             m._tick(t, res)
             t += 1
         ev = m.store.events(0)
@@ -313,7 +320,30 @@ class OutageDetector(unittest.TestCase):
         outage = next(e for e in ev if e["kind"] == "outage")
         self.assertIn("перестал поступать в роутер", outage["cause"])
         self.assertAlmostEqual(outage["end"] - outage["start"], 6, delta=0.01)
+        self.assertEqual(outage["detail"]["ctx"]["hour"], 20)
 
+    def test_wake_from_sleep_is_not_an_outage(self):
+        m = self.make()
+        m._on_resume(1000.0, 5000.0)                       # PC slept, network needs time after wake-up
+        t = 5000.0
+        for res in [self.DOWN] * 20 + [self.UP]:
+            m._tick(t, res)
+            t += 1
+        kinds = [e["kind"] for e in m.store.events(0)]
+        self.assertEqual(kinds, ["sleep"])
+
+    def test_partial_routing_failure(self):
+        m = self.make()
+        m.cfg["anchors"] = ["1.1.1.1", "8.8.8.8"]
+        half = {"gateway": {"ok": True}, "anchor:1.1.1.1": {"ok": True}, "anchor:8.8.8.8": {"ok": False}}
+        t = 1000.0
+        for _ in range(12):
+            m._last_res = half
+            m._tick(t, half)
+            t += 1
+        ev = m.store.events(0)
+        self.assertEqual([e["kind"] for e in ev], ["partial"])
+        self.assertEqual(ev[0]["detail"]["unreachable"], ["8.8.8.8"])
 
 if __name__ == "__main__":
     unittest.main()

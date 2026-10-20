@@ -187,7 +187,7 @@ class SnmpRouter:
                                "rx_errors": w["rx_errors"], "tx_errors": w["tx_errors"], "fcs_errors": w["fcs_errors"],
                                "rx_bytes_total": w["rx_bytes_total"], "tx_bytes_total": w["tx_bytes_total"]})
         else:
-            out["notes"].append("SNMP: WAN-интерфейс не определён автоматически — укажите router.wan_interface в config.json.")
+            out["notes"].append("SNMP: WAN-интерфейс не определён автоматически — укажите имя WAN-порта в «Настройки → Роутер и модем».")
         if "routeros" in out["model"].lower() or "mikrotik" in out["model"].lower():
             self._mikrotik_extras(out)
         if full:

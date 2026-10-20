@@ -1,52 +1,238 @@
-"""MikroTik RouterOS 7 REST API."""
+"""MikroTik RouterOS: REST (v7, www/www-ssl) or the native API (v6/v7, ports 8728/8729)."""
 import base64
 import json
 import re
+import socket
 import ssl
 import urllib.error
 
 from .base import _http, _empty, _to_int, _to_float, band_of
 
 
-# =========================================================================== MikroTik (RouterOS 7 REST)
+class AuthError(Exception):
+    pass
+
+
+# =========================================================================== transports
+
+class RestTransport:
+    def __init__(self, host, username, password, https=True, timeout=5):
+        self.name = "REST " + ("HTTPS" if https else "HTTP")
+        self.base = f"{'https' if https else 'http'}://{host}/rest"
+        self.auth = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
+        self.timeout = timeout
+        self.ctx = ssl._create_unverified_context() if https else None  # routers use self-signed certificates
+
+    def req(self, path, payload=None):
+        data = json.dumps(payload).encode() if payload is not None else None
+        try:
+            _, body = _http(self.base + path, data=data, timeout=self.timeout, context=self.ctx,
+                            headers={"Authorization": self.auth, "Content-Type": "application/json"},
+                            method="POST" if payload is not None else "GET")
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                raise AuthError(f"HTTP {e.code}") from e
+            raise
+        return json.loads(body)
+
+    def close(self):
+        pass
+
+
+def _enc_len(n):
+    if n < 0x80:
+        return bytes([n])
+    if n < 0x4000:
+        return (n | 0x8000).to_bytes(2, "big")
+    if n < 0x200000:
+        return (n | 0xC00000).to_bytes(3, "big")
+    if n < 0x10000000:
+        return (n | 0xE0000000).to_bytes(4, "big")
+    return b"\xF0" + n.to_bytes(4, "big")
+
+
+class ApiTransport:
+    """RouterOS API protocol (length-prefixed words). Speaks the same paths/payloads as the REST transport."""
+
+    def __init__(self, host, username, password, use_ssl=False, timeout=5):
+        self.name = "API-SSL" if use_ssl else "API"
+        port = 8729 if use_ssl else 8728
+        raw = socket.create_connection((host, port), timeout=timeout)
+        if use_ssl:
+            ctx = ssl._create_unverified_context()
+            ctx.set_ciphers("ALL:@SECLEVEL=0")  # RouterOS without a certificate uses anonymous DH ciphers
+            raw = ctx.wrap_socket(raw, server_hostname=host)
+        self.sock = raw
+        self.sock.settimeout(timeout)
+        self.buf = b""
+        status, attrs = self._talk(["/login", f"=name={username}", f"=password={password}"])
+        if status != "!done":
+            self.close()
+            raise AuthError(attrs[0].get("message", "login failed") if attrs else "login failed")
+
+    def _send(self, words):
+        self.sock.sendall(b"".join(_enc_len(len(w.encode())) + w.encode() for w in words) + b"\x00")
+
+    def _recv_exact(self, n):
+        while len(self.buf) < n:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                raise ConnectionError("connection closed")
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def _read_word(self):
+        b = self._recv_exact(1)[0]
+        if b < 0x80:
+            n = b
+        elif b < 0xC0:
+            n = ((b & 0x3F) << 8) | self._recv_exact(1)[0]
+        elif b < 0xE0:
+            n = ((b & 0x1F) << 16) | int.from_bytes(self._recv_exact(2), "big")
+        elif b < 0xF0:
+            n = ((b & 0x0F) << 24) | int.from_bytes(self._recv_exact(3), "big")
+        else:
+            n = int.from_bytes(self._recv_exact(4), "big")
+        return self._recv_exact(n).decode("utf-8", errors="replace")
+
+    def _talk(self, words):
+        self._send(words)
+        rows = []
+        while True:
+            sentence = []
+            while True:
+                w = self._read_word()
+                if w == "":
+                    break
+                sentence.append(w)
+            if not sentence:
+                continue
+            kind, attrs = sentence[0], {}
+            for w in sentence[1:]:
+                if w.startswith("="):
+                    k, _, v = w[1:].partition("=")
+                    attrs[k] = v
+            if kind == "!re":
+                rows.append(attrs)
+            elif kind in ("!done", "!empty"):
+                return "!done", rows
+            elif kind in ("!trap", "!fatal"):
+                # drain until !done after a trap
+                if kind == "!fatal":
+                    return kind, [attrs]
+                rows = [attrs]
+                status = kind
+                while True:
+                    s2 = []
+                    while True:
+                        w = self._read_word()
+                        if w == "":
+                            break
+                        s2.append(w)
+                    if s2 and s2[0] == "!done":
+                        return status, rows
+
+    def req(self, path, payload=None):
+        if payload is None:
+            words = [path.rstrip("/") + "/print"]
+        else:
+            words = [path]
+            for k, v in payload.items():
+                if k == ".query":
+                    words += ["?" + q for q in v]
+                elif v is True:
+                    words.append(f"={k}=")
+                else:
+                    words.append(f"={k}={v}")
+        status, rows = self._talk(words)
+        if status != "!done":
+            raise RuntimeError((rows[0] if rows else {}).get("message", status))
+        return rows
+
+    def close(self):
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+TRANSPORTS = {
+    "rest-https": lambda h, u, p: RestTransport(h, u, p, True),
+    "rest-http": lambda h, u, p: RestTransport(h, u, p, False),
+    "api": lambda h, u, p: ApiTransport(h, u, p, False),
+    "api-ssl": lambda h, u, p: ApiTransport(h, u, p, True),
+}
+
+
+def _why(exc):
+    s = str(exc)
+    if "HANDSHAKE" in s.upper():
+        return "на сервисе www-ssl не назначен сертификат"
+    if "refused" in s.lower() or "10061" in s:
+        return "сервис выключен"
+    if "timed out" in s.lower() or "10060" in s:
+        return "порт закрыт фаерволом"
+    return s[:80]
+
+
+# =========================================================================== MikroTik
 
 class MikroTikRouter:
     kind = "mikrotik"
 
-    def __init__(self, host, username, password, https=True, wan_interface="ether1", timeout=5):
-        self.base = f"{'https' if https else 'http'}://{host}/rest"
-        self.auth = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
+    def __init__(self, host, username, password, https=True, wan_interface="ether1", timeout=5, transport="auto"):
+        self.host, self.username, self.password = host, username or "admin", password or ""
         self.wan = wan_interface
         self.timeout = timeout
-        self.ctx = ssl._create_unverified_context() if https else None  # router uses a self-signed cert
         self.has_password = bool(password)
+        if transport in (None, "", "auto"):
+            self.order = ["rest-https", "rest-http", "api", "api-ssl"] if https else ["rest-http", "rest-https", "api", "api-ssl"]
+        else:
+            self.order = [transport]
+        self.t = None
+
+    def _connect(self, out):
+        tried = []
+        for name in self.order:
+            try:
+                t = TRANSPORTS[name](self.host, self.username, self.password)
+                res = t.req("/system/resource")
+                res = res[0] if isinstance(res, list) and res else res
+                self.t = t
+                out["transport"] = t.name
+                return res
+            except AuthError as e:
+                out["reachable"] = True
+                out["auth"] = "failed"
+                out["notes"].append(f"MikroTik ({name}): неверный логин или пароль ({e}). Проверьте их в настройках «Роутер и модем».")
+                return None
+            except Exception as e:  # noqa: BLE001
+                tried.append(f"{name}: {_why(e)}")
+        out["notes"].append("MikroTik: не удалось подключиться (" + "; ".join(tried) + "). "
+                            "Откройте «Настройки → Роутер и модем» — там есть готовый скрипт, который включит доступ.")
+        out["access_hint"] = "mikrotik_setup"
+        return None
 
     def _req(self, path, payload=None):
-        data = json.dumps(payload).encode() if payload is not None else None
-        _, body = _http(self.base + path, data=data, timeout=self.timeout, context=self.ctx,
-                        headers={"Authorization": self.auth, "Content-Type": "application/json"},
-                        method="POST" if payload is not None else "GET")
-        return json.loads(body)
+        return self.t.req(path, payload)
 
     def collect(self, full=True):
         out = _empty(self.kind)
         if not self.has_password:
             out["auth"] = "no_password"
-            out["notes"].append("Логин/пароль MikroTik не заданы в config.json (нужен пользователь с правами read и включённый www/www-ssl).")
+            out["access_hint"] = "mikrotik_setup"
+            out["notes"].append("Не указан логин/пароль MikroTik — введите их в «Настройки → Роутер и модем».")
+            return out
+        res = self._connect(out)
+        if res is None:
+            return out
         try:
-            res = self._req("/system/resource")
-        except urllib.error.HTTPError as e:
-            out["reachable"] = True
-            out["auth"] = "failed"
-            out["notes"].append(f"MikroTik REST: HTTP {e.code} — проверьте логин/пароль и права пользователя.")
-            return out
-        except Exception as e:  # noqa: BLE001
-            if "HANDSHAKE" in str(e).upper():
-                out["notes"].append("MikroTik REST: на сервисе www-ssl не назначен сертификат. Создайте его (System → Certificates) "
-                                    "или включите сервис www (порт 80) и поставьте \"https\": false в config.json.")
-            else:
-                out["notes"].append(f"MikroTik REST API недоступен ({e}). Включите www-ssl или www в IP → Services.")
-            return out
+            return self._collect(out, res, full)
+        finally:
+            self.t.close()
+
+    def _collect(self, out, res, full):
         out["reachable"] = True
         out["auth"] = "ok"
         out["raw"]["resource"] = res

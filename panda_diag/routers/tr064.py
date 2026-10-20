@@ -143,5 +143,5 @@ class Tr064Router:
             log = q("DeviceInfo", "GetDeviceLog").get("NewDeviceLog", "")
             out["log"] = [l for l in log.splitlines() if re.search(r"DSL|PPP|Internet|WAN|Verbindung|connection|Zeitüberschreitung|LCP|Sync", l, re.I)][:40]
         if out["auth"] is None:
-            out["notes"].append("TR-064: требуется логин/пароль роутера в config.json.")
+            out["notes"].append("Fritz!Box/TR-064: введите логин и пароль роутера в «Настройки → Роутер и модем».")
         return out

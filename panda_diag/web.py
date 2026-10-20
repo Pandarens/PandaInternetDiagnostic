@@ -60,6 +60,8 @@ def make_handler(mon):
                 return self._send(200, _page("index.html"), "text/html; charset=utf-8")
             if u.path == "/favicon.ico":
                 return self._send(200, _page("icon.ico"), "image/x-icon")
+            if u.path == "/api/access":
+                return self._send(200, mon.access_settings())
             if u.path == "/api/app":
                 return self._send(200, self._app_info())
             if u.path == "/api/check":
@@ -114,6 +116,13 @@ def make_handler(mon):
                 except OSError as e:
                     return self._send(500, {"error": str(e)})
                 return self._send(200, st)
+            if u.path == "/api/access/test":
+                return self._send(200, mon.test_access(body))
+            if u.path == "/api/access/save":
+                try:
+                    return self._send(200, mon.save_access(body))
+                except (OSError, ValueError) as e:
+                    return self._send(400, {"error": str(e)})
             if u.path == "/api/fix":
                 res = fixes.run(str(body.get("action")))
                 return self._send(200, res)

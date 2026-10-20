@@ -198,6 +198,7 @@ def main(argv=None, controller=None):
     ap.add_argument("--speed", action="store_true", help="добавить тест скорости в diag")
     ap.add_argument("--hours", type=float, default=24)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--port", type=int, help="порт окна программы (по умолчанию 8765)")
     ap.add_argument("--reloaded", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--after-update", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
@@ -210,6 +211,8 @@ def main(argv=None, controller=None):
             print(f"Создан {config.CONFIG_PATH}")
         return
     cfg = config.load()
+    if a.port:
+        cfg["web_port"] = a.port
     if a.cmd == "diag":
         cmd_diag(cfg, a.speed)
     elif a.cmd == "events":

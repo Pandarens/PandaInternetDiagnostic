@@ -106,6 +106,17 @@ class Store:
             out[t].append([ts, avg, round(100 * lost / n, 1), mx])
         return out
 
+    def hourly(self, since):
+        """{target: [(hour_ts, sent, lost, avg_rtt)]} aggregated in SQLite (fast even for a week of 1-second pings)."""
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT target, CAST(ts / 3600 AS INTEGER) * 3600, COUNT(*), SUM(rtt IS NULL), AVG(rtt) "
+                "FROM samples WHERE ts >= ? GROUP BY 1, 2 ORDER BY 2", (since,)).fetchall()
+        out = collections.defaultdict(list)
+        for t, h, n, lost, avg in rows:
+            out[t].append((h, n, lost or 0, round(avg, 1) if avg is not None else None))
+        return dict(out)
+
     def coverage(self, since, gap=120):
         """Time ranges when monitoring was actually running (from stored samples), merged across gaps < `gap` s."""
         with self.lock:
@@ -163,6 +174,13 @@ class Monitor:
         self.settings = service.load_settings()
         self.enabled = bool(self.settings.get("monitoring", True))
         self._gw_mac = None
+        self._last_tick = None
+        self._last_res = {}
+        self.suppress_until = 0
+        self.outage_ctx = None
+        self.partial_since = self.partial_id = None
+        self.dns_event = None
+        self._router_polled_at = None
 
     # ----------------------------------------------------------------- lifecycle
     def start(self):
@@ -279,10 +297,14 @@ class Monitor:
                 nxt = time.time()
                 continue
             ts = time.time()
+            if self._last_tick and ts - self._last_tick > 12:
+                self._on_resume(self._last_tick, ts)
+            self._last_tick = ts
             targets = dict(self.targets)
             if targets:
                 futs = {k: self.pool.submit(icmp.ping, ip, self.cfg["ping_timeout_ms"]) for k, ip in targets.items()}
                 res = {k: f.result() for k, f in futs.items()}
+                self._last_res = res
                 with self.lock:
                     for k, r in res.items():
                         rtt = r["rtt"] if r["ok"] else None
@@ -295,6 +317,33 @@ class Monitor:
                 nxt = time.time()
                 delay = 0
             self.stop_flag.wait(delay)
+
+    def _on_resume(self, slept_from, now):
+        """The loop stalled for long: the PC was asleep/hibernated. The network needs a few seconds after wake-up,
+        which must not be counted as an internet outage."""
+        self.suppress_until = now + 45
+        if self.down_since is not None and self.outage_id is None:
+            self.down_since = self.outage_chain = None
+        self.store.add_event(slept_from, "sleep", "info", "Компьютер был в спящем режиме", "Наблюдение приостанавливалось",
+                             {"area": "sleep"}, ts_end=now)
+
+    def _context(self):
+        """Cheap snapshot of everything that may explain a drop, taken at the moment it starts."""
+        pc = self.net.get("primary") or {}
+        r = self.router or {}
+        w = self.wifi or {}
+        load = self.load.get("wan") or {}
+        tariff = self.cfg.get("tariff_mbps")
+        ctx = {"pc_status": pc.get("status"), "pc_link_bps": pc.get("link_bps"), "is_wifi": bool(pc.get("is_wifi")),
+               "wifi_rssi": w.get("rssi_dbm"), "wifi_bssid": w.get("bssid"), "wifi_channel": w.get("channel"),
+               "wan_down_bps": load.get("down_bps"), "router_cpu": r.get("cpu_load"), "router_uptime": r.get("uptime_sec"),
+               "router_uptime_at": self._router_polled_at, "hour": int(time.strftime("%H"))}
+        if tariff and load.get("down_bps"):
+            ctx["wan_load_pct"] = round(load["down_bps"] / (tariff * 1e6) * 100)
+        gw = self.stats("gateway", 60)
+        ctx["gw_loss_before"] = gw.get("loss")
+        ctx["gw_avg_before"] = gw.get("avg")
+        return ctx
 
     def _chain_state(self, res):
         return {k: res[k]["ok"] for k in res}
@@ -322,14 +371,19 @@ class Monitor:
         anchors = [v for k, v in res.items() if k.startswith("anchor:")]
         down = bool(anchors) and not any(a["ok"] for a in anchors)
         thr = self.cfg["outage_threshold_sec"]
+        if ts < self.suppress_until and self.down_since is None:
+            return  # just woke up from sleep
+        self._partial_tick(ts, anchors)
         if down:
             if self.down_since is None:
                 self.down_since = ts
                 self.outage_chain = self._chain_state(res)
+                self.outage_ctx = self._context()
             elif self.outage_id is None and ts - self.down_since >= thr - 0.01:
                 area, cause = self._classify_chain(self.outage_chain)
                 self.outage_id = self.store.add_event(self.down_since, "outage", "critical", "Обрыв интернета", cause,
-                                                      {"area": area, "chain": self.outage_chain, "targets": self.targets})
+                                                      {"area": area, "chain": self.outage_chain, "targets": self.targets,
+                                                       "ctx": self.outage_ctx})
                 self.counts["outages"] += 1
                 eid = self.outage_id
                 self.pool.submit(self._capture_outage, eid)
@@ -346,11 +400,26 @@ class Monitor:
             else:
                 area, cause = self._classify_chain(self.outage_chain)
                 self.store.add_event(self.down_since, "blip", "warning", f"Микрообрыв {dur:.0f} с", cause,
-                                     {"area": area, "chain": self.outage_chain}, ts_end=ts)
+                                     {"area": area, "chain": self.outage_chain, "ctx": self.outage_ctx}, ts_end=ts)
                 self.counts["blips"] += 1
             self.down_since = None
             self.outage_id = None
             self.outage_chain = None
+
+    def _partial_tick(self, ts, anchors):
+        some_down = anchors and any(not a["ok"] for a in anchors) and any(a["ok"] for a in anchors)
+        if some_down:
+            if self.partial_since is None:
+                self.partial_since = ts
+            elif self.partial_id is None and ts - self.partial_since >= 10:
+                down = [k.split(":", 1)[1] for k, v in self._last_res.items() if k.startswith("anchor:") and not v["ok"]]
+                self.partial_id = self.store.add_event(self.partial_since, "partial", "warning", "Часть интернета недоступна",
+                                                       "Сбой маршрутизации у провайдера: одни серверы доступны, другие нет",
+                                                       {"area": "isp", "unreachable": down})
+        else:
+            if self.partial_id is not None:
+                self.store.update_event(self.partial_id, ts_end=ts)
+            self.partial_since = self.partial_id = None
 
     def _notify(self, title, body):
         if self.settings.get("notify", True):
@@ -381,6 +450,88 @@ class Monitor:
             detail["area"] = "router"
         detail["router_uptime_after"] = up
         self.store.update_event(eid, cause=cause, detail=detail)
+
+    # ----------------------------------------------------------------- router / ONT access settings
+    def access_settings(self):
+        from .routers import catalog
+        cfg = config.load()
+        r, o = cfg["router"], cfg.get("ont") or {}
+        gw = self.net.get("gateway")
+        cur = self.router or {}
+        kind = (self.router_cache or {}).get("kind") or cur.get("type") or "upnp"
+        primary = self.net.get("primary") or {}
+        return {
+            "gateway": gw, "detected": {"kind": kind, "vendor": cur.get("vendor"), "model": cur.get("model"),
+                                        "auth": cur.get("auth"), "transport": cur.get("transport"),
+                                        "fallback": cur.get("fallback"), "notes": cur.get("notes") or []},
+            "router": {"type": r.get("type") or "auto", "host": r.get("host") or "", "username": r.get("username") or "",
+                       "has_password": bool(r.get("password")), "transport": r.get("transport") or "auto",
+                       "wan_interface": r.get("wan_interface") or "", "has_snmp": bool(r.get("snmp_community"))},
+            "ont": {"type": o.get("type") or "auto", "host": o.get("host") or "", "username": o.get("username") or "",
+                    "has_password": bool(o.get("password"))},
+            "tariff_mbps": cfg.get("tariff_mbps"),
+            "schema": catalog.describe(kind if r.get("type") in (None, "", "auto") else r["type"]),
+            "kinds": catalog.all_kinds(), "ont_help": catalog.ONT_HELP,
+            "schemas": {k: catalog.describe(k) for k in catalog.CATALOG},
+            "mikrotik_script": catalog.mikrotik_script((primary.get("ipv4") or "").split("/")[0]),
+        }
+
+    def _merged_access(self, body):
+        """Settings from the form merged over the saved ones (empty password field = keep the saved one)."""
+        cfg = config.load()
+        r = dict(cfg["router"])
+        for k in ("type", "host", "username", "transport", "wan_interface"):
+            if k in (body.get("router") or {}):
+                r[k] = body["router"][k] or (None if k == "host" else r.get(k))
+        for k in ("password", "snmp_community"):
+            v = (body.get("router") or {}).get(k)
+            if v:
+                r[k] = v
+        o = dict(cfg.get("ont") or {})
+        for k in ("type", "host", "username"):
+            if k in (body.get("ont") or {}):
+                o[k] = body["ont"][k]
+        if (body.get("ont") or {}).get("password"):
+            o["password"] = body["ont"]["password"]
+        return r, o
+
+    def test_access(self, body):
+        r, o = self._merged_access(body)
+        gw = self.net.get("gateway")
+        res = routers.collect_router(r, gw, system.gateway_mac(gw) if gw else None, False, {})
+        out = {"router": {k: (res or {}).get(k) for k in ("type", "kind_name", "auth", "model", "firmware", "transport",
+                                                          "fallback", "notes", "wan", "access_hint")}}
+        if o.get("host"):
+            ont = routers.collect_ont(o, False) or {}
+            out["ont"] = {k: ont.get(k) for k in ("type", "reachable", "auth", "optics", "notes")}
+        return out
+
+    def save_access(self, body):
+        changes = {}
+        rb, ob = body.get("router") or {}, body.get("ont") or {}
+        if rb:
+            changes["router"] = {k: rb[k] for k in ("type", "host", "username", "transport", "wan_interface") if k in rb}
+            if rb.get("host") == "":
+                changes["router"]["host"] = None
+            for k in ("password", "snmp_community"):
+                if rb.get(k):
+                    changes["router"][k] = rb[k]
+                elif rb.get("clear_" + k):
+                    changes["router"][k] = ""
+        if ob:
+            changes["ont"] = {k: ob[k] for k in ("type", "host", "username") if k in ob}
+            if ob.get("host") == "":
+                changes["ont"]["host"] = None
+            if ob.get("password"):
+                changes["ont"]["password"] = ob["password"]
+        if "tariff_mbps" in body:
+            t = body["tariff_mbps"]
+            changes["tariff_mbps"] = float(t) if t not in (None, "", 0) else None
+        self.cfg = config.save(changes)
+        self.router_cache.clear()
+        self.pool.submit(self.refresh_router)
+        self.refresh_path()
+        return self.access_settings()
 
     # ----------------------------------------------------------------- on/off & settings
     def set_settings(self, monitoring=None, notify=None, autostart=None, auto_update=None):
@@ -430,6 +581,21 @@ class Monitor:
         primary = self.net.get("primary") or {}
         self.dns = system.dns_check(primary.get("dns") or [], self.cfg["dns_test_name"])
         self.http = system.http_check(self.cfg["http_check_url"], self.cfg["http_check_expect"])
+        now = time.time()
+        if self.down_since is not None or now < self.suppress_until:
+            return
+        sys_dns = self.dns.get("system") or []
+        dns_bad = bool(sys_dns) and not any(d["ok"] for d in sys_dns) and any(d["ok"] for d in self.dns.get("public") or [])
+        gw = self.net.get("gateway")
+        if dns_bad and self.dns_event is None:
+            via_router = any(d["server"] == gw for d in sys_dns)
+            self.dns_event = self.store.add_event(
+                now, "dns", "warning", "Сайты не открывались, хотя связь была",
+                "Не отвечал DNS-сервер роутера" if via_router else "Не отвечал DNS-сервер провайдера",
+                {"area": "router_dns" if via_router else "dns", "servers": [d["server"] for d in sys_dns]})
+        elif not dns_bad and self.dns_event is not None:
+            self.store.update_event(self.dns_event, ts_end=now)
+            self.dns_event = None
 
     def refresh_system(self):
         net = system.network_state()
@@ -500,6 +666,7 @@ class Monitor:
             self.store.add_event(now, "router", "critical", "Роутер перезагрузился", "Питание, зависание или перегрев")
         self._compute_load(r, now)
         self.router = r
+        self._router_polled_at = now
         if (self.cfg.get("ont") or {}).get("host"):
             try:
                 self.ont = routers.collect_ont(self.cfg["ont"], False)
@@ -637,8 +804,7 @@ class Monitor:
             if snap.get("router") and not self.router:
                 self.router = snap["router"]
             summary = simple.summarize(snap, res)
-            hist = simple.history_verdict(self.store.events(time.time() - 48 * 3600))
-            self.check["result"] = simple.merge_history(summary, hist)
+            self.check["result"] = simple.merge_stability(summary, self.stability(48))
         except Exception as e:  # noqa: BLE001
             self.check["result"] = {"status": "warn", "headline": "Проверка не завершилась", "explanation": str(e),
                                     "steps": ["Нажмите «Проверить ещё раз»."], "checks": [], "others": []}
@@ -649,11 +815,22 @@ class Monitor:
     def journal_plain(self, hours=24):
         since = time.time() - hours * 3600
         ev = self.store.events(since)
-        drops = [e for e in ev if e["kind"] in ("outage", "blip")]
+        drops = [e for e in ev if e["kind"] in ("outage", "blip", "dns", "partial")]
         items = [{"id": e["id"], "start": e["start"], "end": e["end"], "kind": e["kind"], "area": simple.event_area(e),
                   "cause": simple.plain_cause(e), "provider": simple.event_area(e) in simple.PROVIDER_AREAS} for e in drops]
+        covered = self.store.coverage(since)
         return {"since": since, "now": time.time(), "items": items, "verdicts": simple.history_verdict(ev),
-                "covered": self.store.coverage(since), "monitoring": self.enabled}
+                "stability": self.stability(hours, ev, covered),
+                "covered": covered, "monitoring": self.enabled}
+
+    def stability(self, hours=24, events=None, covered=None):
+        from . import stability
+        since = time.time() - hours * 3600
+        ev = events if events is not None else self.store.events(since)
+        covered = covered if covered is not None else self.store.coverage(since)
+        monitored = sum(b - a for a, b in covered)
+        is_wifi = bool((self.net.get("primary") or {}).get("is_wifi"))
+        return stability.analyze(ev, self.store.hourly(since), monitored, is_wifi, int(hours))
 
     def history_plain(self, hours=24):
         ev = self.store.events(time.time() - hours * 3600)

@@ -52,7 +52,9 @@ DEFAULTS = {
         "host": None,               # default: gateway IP
         "username": "admin",
         "password": "",
-        "https": True,              # MikroTik REST only
+        "https": True,              # MikroTik REST only (kept for old configs; see "transport")
+        # MikroTik: "auto" tries REST https -> REST http -> API 8728 -> API-SSL 8729
+        "transport": "auto",
         "wan_interface": "ether1",  # MikroTik / SNMP: name of the WAN port
         "snmp_community": "public",
     },
@@ -75,13 +77,89 @@ def _merge(base, extra):
     return base
 
 
-def load():
-    cfg = copy.deepcopy(DEFAULTS)
+SECRET_KEYS = ("password", "snmp_community")
+
+
+def _read_user_config():
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
-            _merge(cfg, json.load(f))
+            return json.load(f)
+    return {}
+
+
+def load():
+    cfg = copy.deepcopy(DEFAULTS)
+    _merge(cfg, _read_user_config())
+    for section in ("router", "ont"):
+        sec = cfg.get(section) or {}
+        for k in SECRET_KEYS:
+            enc = sec.pop(k + "_enc", None)
+            if enc:
+                try:
+                    sec[k] = unprotect(enc)
+                except OSError:
+                    sec[k] = ""  # encrypted by another Windows user / machine
     os.makedirs(DATA_DIR, exist_ok=True)
     return cfg
+
+
+def save(changes):
+    """Merge `changes` into config.json. Passwords are stored encrypted with Windows DPAPI (current user only)."""
+    user = _read_user_config()
+    changes = copy.deepcopy(changes)
+    for section in ("router", "ont"):
+        sec = changes.get(section)
+        if not isinstance(sec, dict):
+            continue
+        for k in SECRET_KEYS:
+            if k in sec:
+                val = sec.pop(k)
+                if val is None:          # None = keep the stored secret
+                    continue
+                user.setdefault(section, {}).pop(k, None)
+                sec[k + "_enc"] = protect(val) if val else ""
+    _merge(user, changes)
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    tmp = CONFIG_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(user, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CONFIG_PATH)
+    return load()
+
+
+# ------------------------------------------------------------------ DPAPI (CryptProtectData) via ctypes
+
+def _dpapi(data, protect_):
+    import base64
+    import ctypes
+    from ctypes import wintypes
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    buf = ctypes.create_string_buffer(data, len(data))
+    src, dst = BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))), BLOB()
+    crypt32, kernel32 = ctypes.windll.crypt32, ctypes.windll.kernel32
+    fn = crypt32.CryptProtectData if protect_ else crypt32.CryptUnprotectData
+    ok = fn(ctypes.byref(src), None if not protect_ else "PandaInternetDiagnostic", None, None, None, 0x1, ctypes.byref(dst))
+    if not ok:
+        raise OSError("DPAPI failed")
+    try:
+        return ctypes.string_at(dst.pbData, dst.cbData)
+    finally:
+        kernel32.LocalFree(dst.pbData)
+
+
+def protect(text):
+    import base64
+    return "dpapi:" + base64.b64encode(_dpapi(text.encode("utf-8"), True)).decode()
+
+
+def unprotect(value):
+    import base64
+    if not value.startswith("dpapi:"):
+        return value
+    return _dpapi(base64.b64decode(value[6:]), False).decode("utf-8")
 
 
 def write_example():

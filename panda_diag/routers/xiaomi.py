@@ -108,7 +108,7 @@ class XiaomiRouter:
         out["firmware"] = info.get("romversion")
         if not self.password:
             out["auth"] = "no_password"
-            out["notes"].append("Пароль администратора Xiaomi не задан в config.json — доступна только общая информация.")
+            out["notes"].append("Пароль администратора Xiaomi не указан — введите его в «Настройки → Роутер и модем» — доступна только общая информация.")
             return out
         try:
             ok, res = self.login()
