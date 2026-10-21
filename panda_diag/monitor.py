@@ -804,10 +804,22 @@ class Monitor:
             if snap.get("router") and not self.router:
                 self.router = snap["router"]
             summary = simple.summarize(snap, res)
-            self.check["result"] = simple.merge_stability(summary, self.stability(48))
+            try:
+                summary = simple.merge_stability(summary, self.stability(48))
+            except Exception:  # noqa: BLE001  (history analysis is a bonus; the check result stands without it)
+                import traceback
+                traceback.print_exc()
+            self.check["result"] = summary
         except Exception as e:  # noqa: BLE001
-            self.check["result"] = {"status": "warn", "headline": "Проверка не завершилась", "explanation": str(e),
-                                    "steps": ["Нажмите «Проверить ещё раз»."], "checks": [], "others": []}
+            import traceback
+            traceback.print_exc()  # goes to app.log in the exe
+            log = os.path.join(config.BASE_DIR, "app.log")
+            self.check["result"] = {
+                "status": "warn", "headline": "Проверка не завершилась из-за ошибки в программе",
+                "explanation": "Это ошибка программы, а не вашего интернета. Нажмите «Проверить ещё раз». "
+                               f"Если повторится — пришлите разработчику файл {log} (там подробности). Код ошибки: {type(e).__name__}: {e}",
+                "steps": ["Нажмите «Проверить ещё раз».", "Обновите программу: внизу окна «Проверить обновления»."],
+                "checks": [], "others": []}
         finally:
             self.check["running"] = False
             self.check["finished"] = time.time()

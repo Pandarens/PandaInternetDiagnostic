@@ -92,6 +92,28 @@ class Stability(unittest.TestCase):
         self.assertEqual(stability.analyze(evs, hourly(), 20 * 3600)["verdict"]["culprit"], "none")
 
 
+class RouterScanData(unittest.TestCase):
+    def test_neighbours_without_width(self):
+        """Xiaomi/Keenetic scans often have no channel width (None) — must not crash the analysis."""
+        from panda_diag import wifi
+        scan = [{"ssid": "a", "bssid": "00:00:00:00:00:01", "channel": 6, "signal_dbm": -60, "width": None},
+                {"ssid": "b", "bssid": "00:00:00:00:00:02", "channel": 44, "signal_dbm": -70, "width": None},
+                {"ssid": "c", "bssid": "00:00:00:00:00:03", "channel": 1, "signal_dbm": None}]
+        res = wifi.analyze(scan, radios=[{"band": "2.4", "channel": 6, "width": None}, {"band": "5", "channel": 44, "width": None}])
+        self.assertIn("2.4", res["bands"])
+        self.assertIn("5", res["bands"])
+
+    def test_xiaomi_scan_normalize(self):
+        from panda_diag.routers.base import _empty
+        from panda_diag.routers.xiaomi import XiaomiRouter
+        out = _empty("xiaomi")
+        out["raw"] = {"xqnetwork/wifi_list": {"list": [{"ssid": "x", "bssid": "aa", "channel": "11", "signal": "70"}]}}
+        XiaomiRouter("x", "")._normalize(out)
+        self.assertIsNone(out["wifi_scan"][0]["width"])
+        from panda_diag import wifi
+        wifi.analyze(out["wifi_scan"], radios=[{"band": "2.4", "channel": 1}])
+
+
 class FakeRouterOS(threading.Thread):
     """Minimal RouterOS API server: /login and /system/resource/print."""
 

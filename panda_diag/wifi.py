@@ -65,12 +65,12 @@ def _weight(dbm):
 
 def _overlap_24(ch, other, width=20):
     d = abs(ch - other)
-    span = 5 if width <= 20 else 7
+    span = 5 if (width or 20) <= 20 else 7
     return max(0.0, (span - d) / span)
 
 
 def _score_24(ch, aps):
-    return round(sum(_weight(a["signal_dbm"]) * _overlap_24(ch, a["channel"], a.get("width", 20)) for a in aps), 2)
+    return round(sum(_weight(a["signal_dbm"]) * _overlap_24(ch, a["channel"], a.get("width") or 20) for a in aps), 2)
 
 
 def _block_of(ch):
@@ -91,7 +91,7 @@ def _score_5(ch, aps, width):
         group = {ch}
     s = 0.0
     for a in aps:
-        their = set(_block_of(a["channel"])) if a.get("width", 20) >= 80 else {a["channel"]}
+        their = set(_block_of(a["channel"])) if (a.get("width") or 20) >= 80 else {a["channel"]}
         if group & their:
             s += _weight(a["signal_dbm"])
     return round(s, 2)

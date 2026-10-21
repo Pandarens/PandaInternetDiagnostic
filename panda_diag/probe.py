@@ -128,7 +128,12 @@ def collect(cfg, quick=False, router_cache=None, path_cache=None, with_speedtest
         own_ssids.add(snap["wifi"]["ssid"])
     own_bssids = {snap["wifi"].get("bssid")} if snap["wifi"] else set()
     if scan or r.get("wifi_radios") or snap["wifi"]:
-        snap["wifi_analysis"] = wifi.analyze(scan, own_ssids, own_bssids, r.get("wifi_radios"), snap["wifi"])
+        try:  # optional part: odd data from a router must never break the whole check
+            snap["wifi_analysis"] = wifi.analyze(scan, own_ssids, own_bssids, r.get("wifi_radios"), snap["wifi"])
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            snap["wifi_analysis_error"] = str(e)
         snap["wifi_scan"] = scan
     snap["wifi_location_blocked"] = wifi.LOCATION_BLOCKED
     if with_speedtest:
